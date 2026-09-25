@@ -26,3 +26,23 @@ class ResourceNotFoundError(AppError):
     def __init__(self, id: str) -> None:
         self.id = id
         super().__init__("No existe un documento con ese id", "RESOURCE_NOT_FOUND")
+
+
+class CacheUnavailableError(Exception):
+    """La caché no responde. El service la absorbe (fail-open): no llega al cliente."""
+
+
+class LockTimeoutError(AppError):
+    """Otro proceso tiene el lock y no se obtuvo a tiempo (A8)."""
+
+    reason = "lock_timeout"
+
+    def __init__(self, key: str) -> None:
+        self.key = key
+        super().__init__(
+            "No se pudo obtener el lock del recurso a tiempo", "DEPENDENCY_UNAVAILABLE"
+        )
+
+
+class LockUnavailableError(Exception):
+    """El lock no responde. El service la absorbe (fail-open): no llega al cliente."""

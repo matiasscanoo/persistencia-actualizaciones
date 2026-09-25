@@ -1,11 +1,22 @@
 """Tests unitarios de DocumentoService con dobles en memoria (sin MongoDB ni Redis)."""
 
+import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 import pytest
 
-from app.core.exceptions import DuplicateChecksumError, ResourceNotFoundError
+from app.core.cache import Cache
+from app.core.exceptions import (
+    CacheUnavailableError,
+    DuplicateChecksumError,
+    LockTimeoutError,
+    LockUnavailableError,
+    ResourceNotFoundError,
+)
+from app.core.lock import Lock
+from app.core.memory_cache import InMemoryCache
+from app.core.memory_lock import InMemoryLock
 from app.core.memory_repository import InMemoryRepository
 from app.models.documento_pdf import DocumentoPdf
 from app.services.documento_service import DocumentoService
@@ -14,6 +25,9 @@ pytestmark = pytest.mark.asyncio
 
 FECHA_ANTERIOR = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
 CHECKSUM = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+LOCK_CHECKSUM = f"lock:pdf:checksum:{CHECKSUM}"
+LISTADOS = {"pdf:list:pagina=1", "pdf:list:pagina=2"}
+CLAVES_DE_OTRO_DOCUMENTO = {"pdf:id:otro-documento", "pdf:checksum:" + "b" * 64}
 
 
 def datos_documento(**cambios) -> dict:
@@ -33,8 +47,85 @@ def repositorio() -> InMemoryRepository:
 
 
 @pytest.fixture
-def servicio(repositorio) -> DocumentoService:
-    return DocumentoService(repositorio)
+def cache() -> InMemoryCache:
+    return InMemoryCache()
+
+
+@pytest.fixture
+def lock() -> InMemoryLock:
+    return InMemoryLock()
+
+
+@pytest.fixture
+def servicio(repositorio, cache, lock) -> DocumentoService:
+    return DocumentoService(repositorio, cache, lock)
+
+
+class CacheNoDisponible(Cache):
+    """Doble de una caché caída: toda invalidación falla como Redis sin conexión."""
+
+    async def invalidate(self, keys: list[str]) -> None:
+        raise CacheUnavailableError("Redis no responde")
+
+
+@pytest.fixture
+def servicio_con_cache_caida(repositorio, lock) -> DocumentoService:
+    return DocumentoService(repositorio, CacheNoDisponible(), lock)
+
+
+class LockNoDisponible(Lock):
+    """Doble de un lock caído: adquirir falla como Redis sin conexión."""
+
+    async def acquire(self, key: str) -> str:
+        raise LockUnavailableError("Redis no responde")
+
+    async def release(self, key: str, token: str) -> None:
+        raise AssertionError("no se libera un lock que no se tomó")
+
+
+class RepositorioQueObservaElLock(InMemoryRepository):
+    """Registra qué locks estaban tomados en cada escritura."""
+
+    def __init__(self, lock: InMemoryLock) -> None:
+        super().__init__()
+        self._lock = lock
+        self.locks_al_escribir: list[set[str]] = []
+
+    async def add(self, entity: DocumentoPdf) -> DocumentoPdf:
+        self.locks_al_escribir.append(self._lock.claves_tomadas)
+        return await super().add(entity)
+
+    async def update(self, entity: DocumentoPdf) -> DocumentoPdf:
+        self.locks_al_escribir.append(self._lock.claves_tomadas)
+        return await super().update(entity)
+
+    async def delete(self, entity_id: str) -> DocumentoPdf | None:
+        self.locks_al_escribir.append(self._lock.claves_tomadas)
+        return await super().delete(entity_id)
+
+
+class CacheQueObservaElLock(InMemoryCache):
+    """Registra qué locks estaban tomados en cada invalidación."""
+
+    def __init__(self, lock: InMemoryLock) -> None:
+        super().__init__()
+        self._lock = lock
+        self.locks_al_invalidar: list[set[str]] = []
+
+    async def invalidate(self, keys: list[str]) -> None:
+        self.locks_al_invalidar.append(self._lock.claves_tomadas)
+        await super().invalidate(keys)
+
+
+def claves_de(documento: DocumentoPdf) -> set[str]:
+    """Claves que persistencia-consultas cachea para un documento."""
+    return {f"pdf:id:{documento.id}", f"pdf:checksum:{documento.checksum}"}
+
+
+def hay_warning_con(caplog, texto: str) -> bool:
+    return any(
+        r.levelno == logging.WARNING and texto in r.getMessage() for r in caplog.records
+    )
 
 
 async def guardar_documento_anterior(repositorio) -> DocumentoPdf:
@@ -181,3 +272,168 @@ async def test_eliminar_dos_veces_lanza_resource_not_found(servicio, repositorio
 
     with pytest.raises(ResourceNotFoundError):
         await servicio.eliminar(guardado.id)
+
+
+async def test_crear_invalida_checksum_y_listados(servicio, cache):
+    cache.claves.update(
+        {f"pdf:checksum:{CHECKSUM}"} | LISTADOS | CLAVES_DE_OTRO_DOCUMENTO
+    )
+
+    await servicio.crear(**datos_documento())
+
+    assert cache.claves == CLAVES_DE_OTRO_DOCUMENTO
+
+
+async def test_actualizar_nombre_invalida_id_checksum_y_listados(
+    servicio, repositorio, cache
+):
+    guardado = await guardar_documento_anterior(repositorio)
+    cache.claves.update(claves_de(guardado) | LISTADOS | CLAVES_DE_OTRO_DOCUMENTO)
+
+    await servicio.actualizar_nombre(guardado.id, nombre="nuevo.pdf")
+
+    assert cache.claves == CLAVES_DE_OTRO_DOCUMENTO
+
+
+async def test_eliminar_invalida_id_checksum_y_listados(servicio, repositorio, cache):
+    guardado = await guardar_documento_anterior(repositorio)
+    cache.claves.update(claves_de(guardado) | LISTADOS | CLAVES_DE_OTRO_DOCUMENTO)
+
+    await servicio.eliminar(guardado.id)
+
+    assert cache.claves == CLAVES_DE_OTRO_DOCUMENTO
+
+
+async def test_crear_duplicado_no_invalida_la_cache(servicio, repositorio, cache):
+    guardado = await guardar_documento_anterior(repositorio)
+    cache.claves.update(claves_de(guardado) | LISTADOS)
+
+    with pytest.raises(DuplicateChecksumError):
+        await servicio.crear(**datos_documento())
+
+    assert cache.claves == claves_de(guardado) | LISTADOS
+
+
+async def test_actualizar_nombre_inexistente_no_invalida_la_cache(servicio, cache):
+    cache.claves.update(LISTADOS)
+
+    with pytest.raises(ResourceNotFoundError):
+        await servicio.actualizar_nombre(str(uuid4()), nombre="nuevo.pdf")
+
+    assert cache.claves == LISTADOS
+
+
+async def test_eliminar_inexistente_no_invalida_la_cache(servicio, cache):
+    cache.claves.update(LISTADOS)
+
+    with pytest.raises(ResourceNotFoundError):
+        await servicio.eliminar(str(uuid4()))
+
+    assert cache.claves == LISTADOS
+
+
+async def test_crear_con_cache_caida_persiste_y_registra_warning(
+    servicio_con_cache_caida, repositorio, caplog
+):
+    documento = await servicio_con_cache_caida.crear(**datos_documento())
+
+    assert await repositorio.get_by_id(documento.id) is not None
+    assert hay_warning_con(caplog, f"pdf:checksum:{CHECKSUM}")
+
+
+async def test_actualizar_nombre_con_cache_caida_persiste_y_registra_warning(
+    servicio_con_cache_caida, repositorio, caplog
+):
+    guardado = await guardar_documento_anterior(repositorio)
+
+    await servicio_con_cache_caida.actualizar_nombre(guardado.id, nombre="nuevo.pdf")
+
+    persistido = await repositorio.get_by_id(guardado.id)
+    assert persistido.nombre == "nuevo.pdf"
+    assert hay_warning_con(caplog, f"pdf:id:{guardado.id}")
+
+
+async def test_eliminar_con_cache_caida_borra_y_registra_warning(
+    servicio_con_cache_caida, repositorio, caplog
+):
+    guardado = await guardar_documento_anterior(repositorio)
+
+    await servicio_con_cache_caida.eliminar(guardado.id)
+
+    assert await repositorio.get_by_id(guardado.id) is None
+    assert hay_warning_con(caplog, f"pdf:id:{guardado.id}")
+
+
+async def test_crear_escribe_e_invalida_con_el_lock_del_checksum(lock):
+    repositorio = RepositorioQueObservaElLock(lock)
+    cache = CacheQueObservaElLock(lock)
+    servicio = DocumentoService(repositorio, cache, lock)
+
+    await servicio.crear(**datos_documento())
+
+    assert repositorio.locks_al_escribir == [{LOCK_CHECKSUM}]
+    assert cache.locks_al_invalidar == [{LOCK_CHECKSUM}]
+    assert lock.claves_tomadas == set()
+
+
+async def test_actualizar_y_eliminar_escriben_con_el_lock_del_id(lock):
+    repositorio = RepositorioQueObservaElLock(lock)
+    servicio = DocumentoService(repositorio, InMemoryCache(), lock)
+    guardado = await guardar_documento_anterior(repositorio)
+    lock_id = f"lock:pdf:id:{guardado.id}"
+
+    await servicio.actualizar_nombre(guardado.id, nombre="nuevo.pdf")
+    await servicio.eliminar(guardado.id)
+
+    # El primer registro es el add de la preparación, hecho sin el service.
+    assert repositorio.locks_al_escribir[1:] == [{lock_id}, {lock_id}]
+    assert lock.claves_tomadas == set()
+
+
+async def test_el_lock_se_libera_aunque_la_escritura_falle(servicio, repositorio, lock):
+    await guardar_documento_anterior(repositorio)
+
+    with pytest.raises(DuplicateChecksumError):
+        await servicio.crear(**datos_documento())
+    with pytest.raises(ResourceNotFoundError):
+        await servicio.eliminar(str(uuid4()))
+
+    assert lock.claves_tomadas == set()
+
+
+async def test_crear_con_el_checksum_bloqueado_lanza_lock_timeout(
+    servicio, lock, cache
+):
+    await lock.acquire(LOCK_CHECKSUM)
+    cache.claves.update(LISTADOS)
+
+    with pytest.raises(LockTimeoutError) as error:
+        await servicio.crear(**datos_documento())
+
+    assert error.value.error_code == "DEPENDENCY_UNAVAILABLE"
+    assert error.value.reason == "lock_timeout"
+    assert cache.claves == LISTADOS
+
+
+async def test_actualizar_con_el_id_bloqueado_no_modifica_el_documento(
+    servicio, repositorio, lock
+):
+    guardado = await guardar_documento_anterior(repositorio)
+    await lock.acquire(f"lock:pdf:id:{guardado.id}")
+
+    with pytest.raises(LockTimeoutError):
+        await servicio.actualizar_nombre(guardado.id, nombre="nuevo.pdf")
+
+    persistido = await repositorio.get_by_id(guardado.id)
+    assert persistido.nombre == "contrato.pdf"
+
+
+async def test_crear_con_lock_caido_persiste_y_registra_warning(
+    repositorio, cache, caplog
+):
+    servicio = DocumentoService(repositorio, cache, LockNoDisponible())
+
+    documento = await servicio.crear(**datos_documento())
+
+    assert await repositorio.get_by_id(documento.id) is not None
+    assert hay_warning_con(caplog, LOCK_CHECKSUM)
