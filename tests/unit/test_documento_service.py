@@ -1,16 +1,18 @@
 """Tests unitarios de DocumentoService con dobles en memoria (sin MongoDB ni Redis)."""
 
 from datetime import datetime, timedelta, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
-from app.core.exceptions import DuplicateChecksumError
+from app.core.exceptions import DuplicateChecksumError, ResourceNotFoundError
 from app.core.memory_repository import InMemoryRepository
+from app.models.documento_pdf import DocumentoPdf
 from app.services.documento_service import DocumentoService
 
 pytestmark = pytest.mark.asyncio
 
+FECHA_ANTERIOR = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
 CHECKSUM = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
 
 
@@ -26,8 +28,21 @@ def datos_documento(**cambios) -> dict:
 
 
 @pytest.fixture
-def servicio() -> DocumentoService:
-    return DocumentoService(InMemoryRepository())
+def repositorio() -> InMemoryRepository:
+    return InMemoryRepository()
+
+
+@pytest.fixture
+def servicio(repositorio) -> DocumentoService:
+    return DocumentoService(repositorio)
+
+
+async def guardar_documento_anterior(repositorio) -> DocumentoPdf:
+    """Guarda un documento con fechas viejas, para comparar sin depender del reloj."""
+    documento = DocumentoPdf(
+        **datos_documento(), created_at=FECHA_ANTERIOR, updated_at=FECHA_ANTERIOR
+    )
+    return await repositorio.add(documento)
 
 
 async def test_crear_devuelve_documento_con_los_datos_recibidos(servicio):
@@ -84,3 +99,49 @@ async def test_crear_con_checksum_duplicado_lanza_duplicate_checksum_error(servi
 
     assert error.value.checksum == CHECKSUM
     assert error.value.error_code == "DUPLICATE_CHECKSUM"
+
+
+async def test_actualizar_nombre_devuelve_el_documento_con_el_nombre_nuevo(
+    servicio, repositorio
+):
+    guardado = await guardar_documento_anterior(repositorio)
+
+    actualizado = await servicio.actualizar_nombre(guardado.id, nombre="nuevo.pdf")
+
+    assert actualizado.id == guardado.id
+    assert actualizado.nombre == "nuevo.pdf"
+
+
+async def test_actualizar_nombre_renueva_updated_at_y_conserva_el_resto(
+    servicio, repositorio
+):
+    guardado = await guardar_documento_anterior(repositorio)
+
+    actualizado = await servicio.actualizar_nombre(guardado.id, nombre="nuevo.pdf")
+
+    assert actualizado.updated_at > FECHA_ANTERIOR
+    assert actualizado.created_at == FECHA_ANTERIOR
+    assert actualizado.checksum == CHECKSUM
+    assert actualizado.texto == "Contenido extraído del PDF"
+    assert actualizado.tamano_bytes == 245760
+    assert actualizado.paginas == 3
+
+
+async def test_actualizar_nombre_persiste_el_cambio(servicio, repositorio):
+    guardado = await guardar_documento_anterior(repositorio)
+
+    await servicio.actualizar_nombre(guardado.id, nombre="nuevo.pdf")
+
+    persistido = await repositorio.get_by_id(guardado.id)
+    assert persistido.nombre == "nuevo.pdf"
+    assert persistido.updated_at > FECHA_ANTERIOR
+
+
+async def test_actualizar_nombre_de_id_inexistente_lanza_resource_not_found(servicio):
+    id_inexistente = str(uuid4())
+
+    with pytest.raises(ResourceNotFoundError) as error:
+        await servicio.actualizar_nombre(id_inexistente, nombre="nuevo.pdf")
+
+    assert error.value.id == id_inexistente
+    assert error.value.error_code == "RESOURCE_NOT_FOUND"
