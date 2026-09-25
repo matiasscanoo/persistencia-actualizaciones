@@ -10,8 +10,6 @@ from app.core.exceptions import DatabaseError
 from app.core.mongo_repository import MongoRepository
 from app.models.documento_pdf import DocumentoPdf
 
-pytestmark = pytest.mark.asyncio
-
 CHECKSUM = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
 
 
@@ -33,6 +31,7 @@ def test_el_cliente_mongo_devuelve_fechas_con_zona_horaria():
     cliente.close()
 
 
+@pytest.mark.asyncio
 @pytest.mark.integration
 async def test_guarda_el_esquema_compartido_con_consultas(
     repositorio_mongo, coleccion_mongo
@@ -56,6 +55,7 @@ async def test_guarda_el_esquema_compartido_con_consultas(
     assert isinstance(crudo["created_at"], datetime)
 
 
+@pytest.mark.asyncio
 @pytest.mark.integration
 async def test_crear_indices_es_idempotente_y_crea_el_indice_unico(
     repositorio_mongo, coleccion_mongo
@@ -86,6 +86,7 @@ def repositorio_sin_mongo():
     ],
     ids=["add", "get_by_id", "update", "delete"],
 )
+@pytest.mark.asyncio
 async def test_mongo_no_disponible_lanza_database_error(
     repositorio_sin_mongo, operacion
 ):
