@@ -41,6 +41,15 @@ async def test_el_lock_vence_solo_despues_del_timeout(cliente_redis):
 
 
 @pytest.mark.integration
+async def test_quien_espera_obtiene_el_lock_cuando_vence_el_del_dueno(cliente_redis):
+    """Con expiración = espera, un dueño que no libera no provoca lock_timeout."""
+    lock = RedisLock(cliente_redis, timeout_seconds=0.2)
+    await lock.acquire(CLAVE)
+
+    assert await lock.acquire(CLAVE)
+
+
+@pytest.mark.integration
 async def test_acquire_espera_a_que_el_otro_libere(cliente_redis):
     lock = RedisLock(cliente_redis, timeout_seconds=1)
     token = await lock.acquire(CLAVE)
