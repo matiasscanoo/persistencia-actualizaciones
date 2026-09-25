@@ -19,3 +19,13 @@ def test_settings_falla_si_falta_mongo_uri(entorno_valido, monkeypatch):
 
     with pytest.raises(ValidationError, match="mongo_uri"):
         Settings(_env_file=None)
+
+
+@pytest.mark.parametrize("valor", ["0", "-1"])
+def test_settings_falla_si_lock_timeout_no_es_positivo(
+    entorno_valido, monkeypatch, valor
+):
+    monkeypatch.setenv("LOCK_TIMEOUT_SECONDS", valor)
+
+    with pytest.raises(ValidationError, match="lock_timeout_seconds"):
+        Settings(_env_file=None)
