@@ -6,7 +6,7 @@ from app.models.documento_pdf import DocumentoPdf
 
 
 class DocumentoService:
-    """Crea y modifica documentos PDF sobre un repositorio inyectado."""
+    """Crea, modifica y elimina documentos PDF sobre un repositorio inyectado."""
 
     def __init__(self, repository: Repository[DocumentoPdf]) -> None:
         self._repository = repository
@@ -40,3 +40,8 @@ class DocumentoService:
         documento.nombre = nombre
         documento.update_timestamp()
         return await self._repository.update(documento)
+
+    async def eliminar(self, documento_id: str) -> None:
+        """Borra el documento; un id inexistente o ya borrado es un error (A6)."""
+        if await self._repository.delete(documento_id) is None:
+            raise ResourceNotFoundError(documento_id)

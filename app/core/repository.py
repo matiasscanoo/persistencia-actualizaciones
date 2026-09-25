@@ -22,3 +22,7 @@ class Repository(ABC, Generic[T]):
     @abstractmethod
     async def update(self, entity: T) -> T:
         """Reemplaza la entidad guardada con el mismo id y la devuelve."""
+
+    @abstractmethod
+    async def delete(self, entity_id: str) -> T | None:
+        """Borra la entidad con ese id y la devuelve, o None si no existía."""

@@ -30,3 +30,6 @@ class InMemoryRepository(Repository[DocumentoPdf]):
     async def update(self, entity: DocumentoPdf) -> DocumentoPdf:
         self._documentos[entity.id] = copy(entity)
         return entity
+
+    async def delete(self, entity_id: str) -> DocumentoPdf | None:
+        return self._documentos.pop(entity_id, None)
