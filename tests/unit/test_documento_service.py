@@ -145,3 +145,39 @@ async def test_actualizar_nombre_de_id_inexistente_lanza_resource_not_found(serv
 
     assert error.value.id == id_inexistente
     assert error.value.error_code == "RESOURCE_NOT_FOUND"
+
+
+async def test_eliminar_borra_el_documento(servicio, repositorio):
+    guardado = await guardar_documento_anterior(repositorio)
+
+    await servicio.eliminar(guardado.id)
+
+    assert await repositorio.get_by_id(guardado.id) is None
+
+
+async def test_eliminar_libera_el_checksum_para_un_documento_nuevo(
+    servicio, repositorio
+):
+    guardado = await guardar_documento_anterior(repositorio)
+
+    await servicio.eliminar(guardado.id)
+    nuevo = await servicio.crear(**datos_documento())
+
+    assert nuevo.checksum == CHECKSUM
+
+
+async def test_eliminar_id_inexistente_lanza_resource_not_found(servicio):
+    id_inexistente = str(uuid4())
+
+    with pytest.raises(ResourceNotFoundError) as error:
+        await servicio.eliminar(id_inexistente)
+
+    assert error.value.id == id_inexistente
+
+
+async def test_eliminar_dos_veces_lanza_resource_not_found(servicio, repositorio):
+    guardado = await guardar_documento_anterior(repositorio)
+    await servicio.eliminar(guardado.id)
+
+    with pytest.raises(ResourceNotFoundError):
+        await servicio.eliminar(guardado.id)
