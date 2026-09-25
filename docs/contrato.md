@@ -252,6 +252,12 @@ que tiene que coincidir con el que usa persistencia-consultas.
 - Si el lock está tomado, se reintenta con espera corta hasta completar
   `LOCK_TIMEOUT_SECONDS`. Si no se obtiene: `503 DEPENDENCY_UNAVAILABLE` con
   `details.reason = "lock_timeout"` (A8).
+- **Cuándo aparece `lock_timeout`**: la expiración y la espera máxima valen lo
+  mismo, así que el lock del dueño vence antes de que se agote la espera de
+  quien llegó después. Un dueño colgado o caído no provoca el `503`: quien espera
+  obtiene el lock cuando vence, a lo sumo en `LOCK_TIMEOUT_SECONDS`. El `503`
+  solo aparece cuando varias escrituras compiten por la misma clave y otra gana
+  el lock recién liberado antes que este request.
 - Liberación segura con un script Lua que borra la clave solo si el valor es el
   token propio.
 - Orden: `lock → escritura en MongoDB → invalidación → liberar lock`.

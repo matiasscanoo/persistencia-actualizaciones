@@ -26,3 +26,11 @@ def entorno_valido(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MONGO_COLLECTION", "documentos_test")
     monkeypatch.setenv("REDIS_URL", "redis://redis-test:6379/0")
     monkeypatch.setenv("LOCK_TIMEOUT_SECONDS", "5")
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        "integration: necesita un servicio real (TEST_MONGO_URI o TEST_REDIS_URL); "
+        "si la variable no está definida, el test se saltea",
+    )

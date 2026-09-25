@@ -48,3 +48,40 @@ definida en el entorno, se ignora.
 uv sync
 uv run pytest tests/ -v
 ```
+
+La suite es hermética: corre sin `.env`, sin MongoDB y sin Redis. Los tests del
+service usan los dobles en memoria (`InMemoryRepository`, `InMemoryCache`,
+`InMemoryLock`).
+
+### Tests de integración con MongoDB y Redis reales
+
+Los adaptadores reales (`MongoRepository`, `RedisCache`, `RedisLock`) son el
+*seam* del servicio: se prueban con las mismas suites de contrato que los dobles
+en memoria (`tests/integration/test_*_contrato.py`), más tests propios de cada
+adaptador. Los tests marcados `integration` se saltean si no está definida su
+variable:
+
+| Variable | Habilita |
+|---|---|
+| `TEST_MONGO_URI` | tests de `MongoRepository` contra un MongoDB real |
+| `TEST_REDIS_URL` | tests de `RedisCache` y `RedisLock` contra un Redis real |
+
+> ⚠️ Cada test **vacía la base Redis** de `TEST_REDIS_URL` (`FLUSHDB`) antes y
+> después de correr. Usar una instancia o un número de base descartable, nunca
+> el Redis del stack. En MongoDB cada test usa una colección propia en la base
+> `persistencia_actualizaciones_test` y la borra al terminar.
+
+Para correrlos en local con Docker:
+
+```bash
+docker run -d --name pa-mongo-test -p 27018:27017 mongo:7
+docker run -d --name pa-redis-test -p 6380:6379 redis:7-alpine
+
+TEST_MONGO_URI=mongodb://localhost:27018 \
+TEST_REDIS_URL=redis://localhost:6380/0 \
+uv run pytest tests/ -v
+```
+
+Los tests de "MongoDB o Redis caído" no necesitan ningún servicio: apuntan a un
+puerto cerrado y corren siempre. En la integración con el stack completo (#13)
+estos mismos tests se corren contra los contenedores de la infraestructura.

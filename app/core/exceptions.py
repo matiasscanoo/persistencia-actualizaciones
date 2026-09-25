@@ -46,3 +46,10 @@ class LockTimeoutError(AppError):
 
 class LockUnavailableError(Exception):
     """El lock no responde. El service la absorbe (fail-open): no llega al cliente."""
+
+
+class DatabaseError(AppError):
+    """MongoDB no responde o no responde a tiempo."""
+
+    def __init__(self) -> None:
+        super().__init__("Base de datos no disponible", "DATABASE_ERROR")
