@@ -1,0 +1,28 @@
+[project]
+name = "persistencia-actualizaciones"
+version = "0.1.0"
+description = "Microservicio de escritura de documentos PDF (MongoDB + Redis)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi",
+]
+
+[dependency-groups]
+dev = [
+    "black",
+    "httpx",
+    "pytest",
+    "ruff",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
