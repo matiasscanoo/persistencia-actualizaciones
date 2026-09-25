@@ -26,3 +26,7 @@ class ResourceNotFoundError(AppError):
     def __init__(self, id: str) -> None:
         self.id = id
         super().__init__("No existe un documento con ese id", "RESOURCE_NOT_FOUND")
+
+
+class CacheUnavailableError(Exception):
+    """La caché no responde. El service la absorbe (fail-open): no llega al cliente."""
