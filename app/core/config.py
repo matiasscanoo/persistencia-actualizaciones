@@ -1,5 +1,6 @@
 """Configuración por variables de entorno (pydantic-settings), validada al arrancar."""
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,4 +17,4 @@ class Settings(BaseSettings):
     mongo_database: str
     mongo_collection: str
     redis_url: str
-    lock_timeout_seconds: int
+    lock_timeout_seconds: int = Field(gt=0)
