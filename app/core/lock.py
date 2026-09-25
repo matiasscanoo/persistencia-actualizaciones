@@ -16,4 +16,7 @@ class Lock(ABC):
 
     @abstractmethod
     async def release(self, key: str, token: str) -> None:
-        """Libera el lock solo si sigue siendo del dueño de ese token."""
+        """Libera el lock solo si sigue siendo del dueño de ese token.
+
+        No lanza: si el lock no responde, vence solo por su expiración.
+        """
