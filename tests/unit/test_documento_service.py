@@ -5,6 +5,7 @@ from uuid import UUID
 
 import pytest
 
+from app.core.exceptions import DuplicateChecksumError
 from app.core.memory_repository import InMemoryRepository
 from app.services.documento_service import DocumentoService
 
@@ -73,3 +74,13 @@ async def test_crear_acepta_texto_vacio(servicio):
     documento = await servicio.crear(**datos_documento(texto=""))
 
     assert documento.texto == ""
+
+
+async def test_crear_con_checksum_duplicado_lanza_duplicate_checksum_error(servicio):
+    await servicio.crear(**datos_documento())
+
+    with pytest.raises(DuplicateChecksumError) as error:
+        await servicio.crear(**datos_documento(nombre="otro-nombre.pdf"))
+
+    assert error.value.checksum == CHECKSUM
+    assert error.value.error_code == "DUPLICATE_CHECKSUM"
