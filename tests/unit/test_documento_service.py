@@ -1,11 +1,18 @@
 """Tests unitarios de DocumentoService con dobles en memoria (sin MongoDB ni Redis)."""
 
+import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 import pytest
 
-from app.core.exceptions import DuplicateChecksumError, ResourceNotFoundError
+from app.core.cache import Cache
+from app.core.exceptions import (
+    CacheUnavailableError,
+    DuplicateChecksumError,
+    ResourceNotFoundError,
+)
+from app.core.memory_cache import InMemoryCache
 from app.core.memory_repository import InMemoryRepository
 from app.models.documento_pdf import DocumentoPdf
 from app.services.documento_service import DocumentoService
@@ -14,6 +21,8 @@ pytestmark = pytest.mark.asyncio
 
 FECHA_ANTERIOR = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
 CHECKSUM = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+LISTADOS = {"pdf:list:pagina=1", "pdf:list:pagina=2"}
+CLAVES_DE_OTRO_DOCUMENTO = {"pdf:id:otro-documento", "pdf:checksum:" + "b" * 64}
 
 
 def datos_documento(**cambios) -> dict:
@@ -33,8 +42,36 @@ def repositorio() -> InMemoryRepository:
 
 
 @pytest.fixture
-def servicio(repositorio) -> DocumentoService:
-    return DocumentoService(repositorio)
+def cache() -> InMemoryCache:
+    return InMemoryCache()
+
+
+@pytest.fixture
+def servicio(repositorio, cache) -> DocumentoService:
+    return DocumentoService(repositorio, cache)
+
+
+class CacheNoDisponible(Cache):
+    """Doble de una caché caída: toda invalidación falla como Redis sin conexión."""
+
+    async def invalidate(self, keys: list[str]) -> None:
+        raise CacheUnavailableError("Redis no responde")
+
+
+@pytest.fixture
+def servicio_con_cache_caida(repositorio) -> DocumentoService:
+    return DocumentoService(repositorio, CacheNoDisponible())
+
+
+def claves_de(documento: DocumentoPdf) -> set[str]:
+    """Claves que persistencia-consultas cachea para un documento."""
+    return {f"pdf:id:{documento.id}", f"pdf:checksum:{documento.checksum}"}
+
+
+def hay_warning_con(caplog, texto: str) -> bool:
+    return any(
+        r.levelno == logging.WARNING and texto in r.getMessage() for r in caplog.records
+    )
 
 
 async def guardar_documento_anterior(repositorio) -> DocumentoPdf:
@@ -181,3 +218,93 @@ async def test_eliminar_dos_veces_lanza_resource_not_found(servicio, repositorio
 
     with pytest.raises(ResourceNotFoundError):
         await servicio.eliminar(guardado.id)
+
+
+async def test_crear_invalida_checksum_y_listados(servicio, cache):
+    cache.claves.update(
+        {f"pdf:checksum:{CHECKSUM}"} | LISTADOS | CLAVES_DE_OTRO_DOCUMENTO
+    )
+
+    await servicio.crear(**datos_documento())
+
+    assert cache.claves == CLAVES_DE_OTRO_DOCUMENTO
+
+
+async def test_actualizar_nombre_invalida_id_checksum_y_listados(
+    servicio, repositorio, cache
+):
+    guardado = await guardar_documento_anterior(repositorio)
+    cache.claves.update(claves_de(guardado) | LISTADOS | CLAVES_DE_OTRO_DOCUMENTO)
+
+    await servicio.actualizar_nombre(guardado.id, nombre="nuevo.pdf")
+
+    assert cache.claves == CLAVES_DE_OTRO_DOCUMENTO
+
+
+async def test_eliminar_invalida_id_checksum_y_listados(servicio, repositorio, cache):
+    guardado = await guardar_documento_anterior(repositorio)
+    cache.claves.update(claves_de(guardado) | LISTADOS | CLAVES_DE_OTRO_DOCUMENTO)
+
+    await servicio.eliminar(guardado.id)
+
+    assert cache.claves == CLAVES_DE_OTRO_DOCUMENTO
+
+
+async def test_crear_duplicado_no_invalida_la_cache(servicio, repositorio, cache):
+    guardado = await guardar_documento_anterior(repositorio)
+    cache.claves.update(claves_de(guardado) | LISTADOS)
+
+    with pytest.raises(DuplicateChecksumError):
+        await servicio.crear(**datos_documento())
+
+    assert cache.claves == claves_de(guardado) | LISTADOS
+
+
+async def test_actualizar_nombre_inexistente_no_invalida_la_cache(servicio, cache):
+    cache.claves.update(LISTADOS)
+
+    with pytest.raises(ResourceNotFoundError):
+        await servicio.actualizar_nombre(str(uuid4()), nombre="nuevo.pdf")
+
+    assert cache.claves == LISTADOS
+
+
+async def test_eliminar_inexistente_no_invalida_la_cache(servicio, cache):
+    cache.claves.update(LISTADOS)
+
+    with pytest.raises(ResourceNotFoundError):
+        await servicio.eliminar(str(uuid4()))
+
+    assert cache.claves == LISTADOS
+
+
+async def test_crear_con_cache_caida_persiste_y_registra_warning(
+    servicio_con_cache_caida, repositorio, caplog
+):
+    documento = await servicio_con_cache_caida.crear(**datos_documento())
+
+    assert await repositorio.get_by_id(documento.id) is not None
+    assert hay_warning_con(caplog, f"pdf:checksum:{CHECKSUM}")
+
+
+async def test_actualizar_nombre_con_cache_caida_persiste_y_registra_warning(
+    servicio_con_cache_caida, repositorio, caplog
+):
+    guardado = await guardar_documento_anterior(repositorio)
+
+    await servicio_con_cache_caida.actualizar_nombre(guardado.id, nombre="nuevo.pdf")
+
+    persistido = await repositorio.get_by_id(guardado.id)
+    assert persistido.nombre == "nuevo.pdf"
+    assert hay_warning_con(caplog, f"pdf:id:{guardado.id}")
+
+
+async def test_eliminar_con_cache_caida_borra_y_registra_warning(
+    servicio_con_cache_caida, repositorio, caplog
+):
+    guardado = await guardar_documento_anterior(repositorio)
+
+    await servicio_con_cache_caida.eliminar(guardado.id)
+
+    assert await repositorio.get_by_id(guardado.id) is None
+    assert hay_warning_con(caplog, f"pdf:id:{guardado.id}")
