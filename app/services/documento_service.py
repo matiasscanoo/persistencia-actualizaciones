@@ -1,11 +1,12 @@
 """Reglas de negocio de escritura de documentos PDF (sin FastAPI)."""
 
+from app.core.exceptions import ResourceNotFoundError
 from app.core.repository import Repository
 from app.models.documento_pdf import DocumentoPdf
 
 
 class DocumentoService:
-    """Crea documentos PDF sobre un repositorio inyectado."""
+    """Crea y modifica documentos PDF sobre un repositorio inyectado."""
 
     def __init__(self, repository: Repository[DocumentoPdf]) -> None:
         self._repository = repository
@@ -28,3 +29,14 @@ class DocumentoService:
             paginas=paginas,
         )
         return await self._repository.add(documento)
+
+    async def actualizar_nombre(
+        self, documento_id: str, *, nombre: str
+    ) -> DocumentoPdf:
+        """Cambia el nombre y renueva `updated_at`; el resto no se toca."""
+        documento = await self._repository.get_by_id(documento_id)
+        if documento is None:
+            raise ResourceNotFoundError(documento_id)
+        documento.nombre = nombre
+        documento.update_timestamp()
+        return await self._repository.update(documento)

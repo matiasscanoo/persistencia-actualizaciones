@@ -14,3 +14,11 @@ class Repository(ABC, Generic[T]):
     @abstractmethod
     async def add(self, entity: T) -> T:
         """Guarda una entidad nueva y la devuelve."""
+
+    @abstractmethod
+    async def get_by_id(self, entity_id: str) -> T | None:
+        """Devuelve la entidad con ese id, o None si no existe."""
+
+    @abstractmethod
+    async def update(self, entity: T) -> T:
+        """Reemplaza la entidad guardada con el mismo id y la devuelve."""

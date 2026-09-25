@@ -25,3 +25,7 @@ class BaseEntity:
     def __post_init__(self) -> None:
         if self.updated_at is None:
             self.updated_at = self.created_at
+
+    def update_timestamp(self) -> None:
+        """Marca la entidad como modificada ahora."""
+        self.updated_at = ahora_utc()
