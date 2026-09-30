@@ -57,6 +57,19 @@ async def test_guarda_el_esquema_compartido_con_consultas(
 
 @pytest.mark.asyncio
 @pytest.mark.integration
+async def test_guarda_tamano_bytes_como_int64_aunque_entre_en_32_bits(
+    repositorio_mongo, coleccion_mongo
+):
+    # Contrato, sección 8: tamano_bytes es long. Sin forzarlo, PyMongo guarda
+    # int32 los valores chicos e int64 los mayores a 2 GiB: tipos mixtos.
+    guardado = await repositorio_mongo.add(documento(tamano_bytes=1024))
+
+    filtro = {"_id": guardado.id, "tamano_bytes": {"$type": "long"}}
+    assert await coleccion_mongo.count_documents(filtro) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
 async def test_crear_indices_es_idempotente_y_crea_el_indice_unico(
     repositorio_mongo, coleccion_mongo
 ):
