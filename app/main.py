@@ -123,8 +123,15 @@ def _error_response(
     )
 
 
-def _campo(loc: tuple) -> str:
-    """Ruta del campo sin el prefijo de ubicación de FastAPI (A14)."""
+def _campo(error: dict) -> str:
+    """Ruta del campo sin el prefijo de ubicación de FastAPI (A14).
+
+    Si el body entero es inválido (JSON mal formado), FastAPI reporta
+    `loc=("body", <posición>)`: el campo sigue siendo "body", no la posición.
+    """
+    if error["type"] == "json_invalid":
+        return "body"
+    loc = error["loc"]
     if len(loc) <= 1:
         return "body"
     return ".".join(str(parte) for parte in loc[1:])
@@ -134,7 +141,7 @@ def _campo(loc: tuple) -> str:
 async def manejar_error_de_validacion(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
-    errores = [{"field": _campo(e["loc"]), "message": e["msg"]} for e in exc.errors()]
+    errores = [{"field": _campo(e), "message": e["msg"]} for e in exc.errors()]
     return _error_response(
         request, 400, "VALIDATION_ERROR", "Error de validación", {"errors": errores}
     )
@@ -144,7 +151,11 @@ async def manejar_error_de_validacion(
 async def manejar_ruta_o_metodo_no_definidos(
     request: Request, exc: StarletteHTTPException
 ) -> JSONResponse:
-    """Rutas o métodos fuera del contrato, en el formato común de error (A18)."""
+    """Rutas o métodos fuera del contrato, en el formato común de error (A18).
+
+    Starlette solo levanta este HTTPException con 404 (ruta inexistente) o 405
+    (método no permitido en una ruta que sí existe); no hay un tercer caso.
+    """
     if exc.status_code == 405:
         return _error_response(
             request,
@@ -153,13 +164,8 @@ async def manejar_ruta_o_metodo_no_definidos(
             "Método no permitido",
             {"reason": "method_not_allowed"},
         )
-    if exc.status_code == 404:
-        return _error_response(
-            request, 404, "RESOURCE_NOT_FOUND", "Recurso no encontrado", {}
-        )
-    # Starlette no levanta HTTPException con otro código en esta app.
     return _error_response(
-        request, exc.status_code, "INTERNAL_ERROR", str(exc.detail), {}
+        request, 404, "RESOURCE_NOT_FOUND", "Recurso no encontrado", {}
     )
 
 
