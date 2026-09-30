@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 
+from bson.int64 import Int64
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pymongo.errors import ConnectionFailure, DuplicateKeyError
 
@@ -60,13 +61,19 @@ async def _errores_de_mongo() -> AsyncIterator[None]:
 
 
 def _a_documento(entidad: DocumentoPdf) -> dict:
-    """Entidad → documento Mongo (`id` → `_id`)."""
+    """Entidad → documento Mongo (`id` → `_id`).
+
+    `tamano_bytes` va siempre como int64 (contrato, sección 8): sin forzarlo,
+    PyMongo guarda int32 si el valor entra y la colección queda con tipos mixtos.
+    """
     documento = asdict(entidad)
     documento["_id"] = documento.pop("id")
+    documento["tamano_bytes"] = Int64(documento["tamano_bytes"])
     return documento
 
 
 def _a_entidad(documento: dict) -> DocumentoPdf:
-    """Documento Mongo → entidad (`_id` → `id`)."""
+    """Documento Mongo → entidad (`_id` → `id`); `Int64` vuelve a `int`."""
     documento["id"] = documento.pop("_id")
+    documento["tamano_bytes"] = int(documento["tamano_bytes"])
     return DocumentoPdf(**documento)
