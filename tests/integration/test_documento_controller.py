@@ -47,3 +47,19 @@ def test_patch_pdf_actualiza_nombre_y_devuelve_200(cliente_http) -> None:
     assert documento["nombre"] == "contrato-renombrado.pdf"
     assert documento["checksum"] == creado["checksum"]
     assert documento["created_at"] == creado["created_at"]
+
+
+def test_delete_pdf_elimina_documento_y_devuelve_204(cliente_http) -> None:
+    body = {
+        "nombre": "contrato.pdf",
+        "checksum": CHECKSUM,
+        "texto": "Contenido extraído del PDF",
+        "tamano_bytes": 245760,
+        "paginas": 3,
+    }
+    creado = cliente_http.post("/pdf", json=body).json()
+
+    respuesta = cliente_http.delete(f"/pdf/{creado['id']}")
+
+    assert respuesta.status_code == 204
+    assert respuesta.content == b""
