@@ -177,6 +177,26 @@ def test_correlation_id_invalido_se_reemplaza_por_uno_generado(cliente_http):
     assert UUID(respuesta.headers["X-Correlation-ID"])
 
 
+def test_ruta_inexistente_devuelve_404_en_formato_comun(cliente_http):
+    respuesta = cliente_http.get("/no-existe")
+
+    assert respuesta.status_code == 404
+    error = respuesta.json()["error"]
+    assert error["code"] == "RESOURCE_NOT_FOUND"
+    assert error["correlation_id"] == respuesta.headers["X-Correlation-ID"]
+
+
+def test_metodo_no_permitido_devuelve_405_en_formato_comun(cliente_http):
+    # /pdf/{id} existe (PATCH, DELETE), pero no para GET.
+    respuesta = cliente_http.get(f"/pdf/{uuid4()}")
+
+    assert respuesta.status_code == 405
+    error = respuesta.json()["error"]
+    assert error["code"] == "VALIDATION_ERROR"
+    assert error["details"]["reason"] == "method_not_allowed"
+    assert error["correlation_id"] == respuesta.headers["X-Correlation-ID"]
+
+
 def test_correlation_id_coincide_entre_header_y_error(cliente_http):
     mio = "mi-correlation-id"
 
