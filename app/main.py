@@ -8,6 +8,7 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.controllers.documento_controller import router as documento_router
 from app.controllers.health_controller import router as health_router
@@ -136,6 +137,29 @@ async def manejar_error_de_validacion(
     errores = [{"field": _campo(e["loc"]), "message": e["msg"]} for e in exc.errors()]
     return _error_response(
         request, 400, "VALIDATION_ERROR", "Error de validación", {"errors": errores}
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def manejar_ruta_o_metodo_no_definidos(
+    request: Request, exc: StarletteHTTPException
+) -> JSONResponse:
+    """Rutas o métodos fuera del contrato, en el formato común de error (A18)."""
+    if exc.status_code == 405:
+        return _error_response(
+            request,
+            405,
+            "VALIDATION_ERROR",
+            "Método no permitido",
+            {"reason": "method_not_allowed"},
+        )
+    if exc.status_code == 404:
+        return _error_response(
+            request, 404, "RESOURCE_NOT_FOUND", "Recurso no encontrado", {}
+        )
+    # Starlette no levanta HTTPException con otro código en esta app.
+    return _error_response(
+        request, exc.status_code, "INTERNAL_ERROR", str(exc.detail), {}
     )
 
 
