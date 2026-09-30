@@ -38,3 +38,11 @@ async def actualizar_documento(
 ) -> DocumentoResponse:
     documento = await servicio.actualizar_nombre(str(documento_id), nombre=body.nombre)
     return DocumentoResponse.model_validate(documento)
+
+
+@router.delete("/pdf/{documento_id}", status_code=204)
+async def eliminar_documento(
+    documento_id: UUID,
+    servicio: DocumentoService = Depends(get_documento_service),
+) -> None:
+    await servicio.eliminar(str(documento_id))
