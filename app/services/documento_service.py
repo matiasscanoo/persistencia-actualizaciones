@@ -16,6 +16,22 @@ from app.models.documento_pdf import DocumentoPdf
 
 logger = logging.getLogger(__name__)
 
+# Claves de Redis (contrato, secciones 7.1 y 7.2): se arman solo acá. El lock
+# de un recurso es su clave de caché con el prefijo "lock:".
+CLAVE_LISTADOS = "pdf:list:*"
+
+
+def _clave_por_id(documento_id: str) -> str:
+    return f"pdf:id:{documento_id}"
+
+
+def _clave_por_checksum(checksum: str) -> str:
+    return f"pdf:checksum:{checksum}"
+
+
+def _lock_de(clave: str) -> str:
+    return f"lock:{clave}"
+
 
 class DocumentoService:
     """Crea, modifica y elimina documentos PDF y deja la caché coherente.
@@ -47,7 +63,7 @@ class DocumentoService:
             tamano_bytes=tamano_bytes,
             paginas=paginas,
         )
-        async with self._con_lock(f"lock:pdf:checksum:{checksum}"):
+        async with self._con_lock(_lock_de(_clave_por_checksum(checksum))):
             creado = await self._repository.add(documento)
             await self._invalidar(creado)
         return creado
@@ -56,7 +72,7 @@ class DocumentoService:
         self, documento_id: str, *, nombre: str
     ) -> DocumentoPdf:
         """Cambia el nombre y renueva `updated_at`; el resto no se toca."""
-        async with self._con_lock(f"lock:pdf:id:{documento_id}"):
+        async with self._con_lock(_lock_de(_clave_por_id(documento_id))):
             documento = await self._repository.get_by_id(documento_id)
             if documento is None:
                 raise ResourceNotFoundError(documento_id)
@@ -68,7 +84,7 @@ class DocumentoService:
 
     async def eliminar(self, documento_id: str) -> None:
         """Borra el documento; un id inexistente o ya borrado es un error (A6)."""
-        async with self._con_lock(f"lock:pdf:id:{documento_id}"):
+        async with self._con_lock(_lock_de(_clave_por_id(documento_id))):
             eliminado = await self._repository.delete(documento_id)
             if eliminado is None:
                 raise ResourceNotFoundError(documento_id)
@@ -98,9 +114,9 @@ class DocumentoService:
         Si la caché no responde, la escritura ya hecha se mantiene (fail-open).
         """
         claves = [
-            f"pdf:id:{documento.id}",
-            f"pdf:checksum:{documento.checksum}",
-            "pdf:list:*",
+            _clave_por_id(documento.id),
+            _clave_por_checksum(documento.checksum),
+            CLAVE_LISTADOS,
         ]
         try:
             await self._cache.invalidate(claves)

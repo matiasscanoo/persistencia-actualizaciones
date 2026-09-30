@@ -55,8 +55,7 @@ def lock_en_memoria() -> InMemoryLock:
 def cliente_http(repositorio_en_memoria, cache_en_memoria, lock_en_memoria):
     """TestClient con dobles en memoria; no ejecuta el lifespan real de main.py.
 
-    Expone los dobles como atributos (`.repository`, `.cache`, `.lock`) para
-    que los tests puedan inspeccionarlos, p. ej. verificar qué claves quedaron
+    Expone el doble de caché como `.cache` para verificar qué claves quedaron
     invalidadas tras un request.
     """
     servicio = DocumentoService(
@@ -64,9 +63,7 @@ def cliente_http(repositorio_en_memoria, cache_en_memoria, lock_en_memoria):
     )
     app.dependency_overrides[get_documento_service] = lambda: servicio
     cliente = TestClient(app)
-    cliente.repository = repositorio_en_memoria
     cliente.cache = cache_en_memoria
-    cliente.lock = lock_en_memoria
     yield cliente
     app.dependency_overrides.clear()
 
