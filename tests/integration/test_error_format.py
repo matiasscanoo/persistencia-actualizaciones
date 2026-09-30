@@ -74,6 +74,17 @@ def test_post_pdf_con_checksum_invalido_devuelve_400_validation_error(cliente_ht
     assert error["correlation_id"] == respuesta.headers["X-Correlation-ID"]
 
 
+def test_post_pdf_con_json_malformado_devuelve_400_con_field_body(cliente_http):
+    respuesta = cliente_http.post(
+        "/pdf", content=b"esto no es json", headers={"Content-Type": "application/json"}
+    )
+
+    assert respuesta.status_code == 400
+    error = respuesta.json()["error"]
+    assert error["code"] == "VALIDATION_ERROR"
+    assert error["details"]["errors"][0]["field"] == "body"
+
+
 def test_post_pdf_con_campos_extra_devuelve_400(cliente_http):
     respuesta = cliente_http.post("/pdf", json={**BODY_VALIDO, "id": str(uuid4())})
 
