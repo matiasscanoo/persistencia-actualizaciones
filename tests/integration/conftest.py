@@ -9,10 +9,16 @@ from uuid import uuid4
 
 import pytest
 import pytest_asyncio
+from fastapi.testclient import TestClient
 
 from app.core.database import crear_cliente_mongo, crear_cliente_redis
+from app.core.dependencies import get_documento_service
+from app.core.memory_cache import InMemoryCache
+from app.core.memory_lock import InMemoryLock
 from app.core.memory_repository import InMemoryRepository
 from app.core.mongo_repository import MongoRepository
+from app.main import app
+from app.services.documento_service import DocumentoService
 
 TEST_MONGO_URI = os.environ.get("TEST_MONGO_URI")
 TEST_REDIS_URL = os.environ.get("TEST_REDIS_URL")
@@ -33,6 +39,27 @@ async def coleccion_mongo():
 @pytest.fixture
 def repositorio_en_memoria() -> InMemoryRepository:
     return InMemoryRepository()
+
+
+@pytest.fixture
+def cache_en_memoria() -> InMemoryCache:
+    return InMemoryCache()
+
+
+@pytest.fixture
+def lock_en_memoria() -> InMemoryLock:
+    return InMemoryLock()
+
+
+@pytest.fixture
+def cliente_http(repositorio_en_memoria, cache_en_memoria, lock_en_memoria):
+    """TestClient con dobles en memoria; no ejecuta el lifespan real de main.py."""
+    servicio = DocumentoService(
+        repositorio_en_memoria, cache_en_memoria, lock_en_memoria
+    )
+    app.dependency_overrides[get_documento_service] = lambda: servicio
+    yield TestClient(app)
+    app.dependency_overrides.clear()
 
 
 @pytest_asyncio.fixture
