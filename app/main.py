@@ -1,6 +1,8 @@
 """Composición de la aplicación: routers, middleware, handlers de error y DI."""
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -9,6 +11,8 @@ from fastapi.responses import JSONResponse
 
 from app.controllers.documento_controller import router as documento_router
 from app.controllers.health_controller import router as health_router
+from app.core.config import Settings
+from app.core.database import crear_cliente_mongo, crear_cliente_redis
 from app.core.exceptions import (
     DatabaseError,
     DuplicateChecksumError,
@@ -16,7 +20,11 @@ from app.core.exceptions import (
     ResourceNotFoundError,
 )
 from app.core.logging_context import CorrelationIdFilter, correlation_id_var
+from app.core.mongo_repository import MongoRepository
+from app.core.redis_cache import RedisCache
+from app.core.redis_lock import RedisLock
 from app.schemas.error import ErrorDetail, ErrorResponse
+from app.services.documento_service import DocumentoService
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +47,27 @@ def _configurar_logging() -> None:
 
 _configurar_logging()
 
-app = FastAPI(title="persistencia-actualizaciones")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Arma DocumentoService con adaptadores reales; cierra las conexiones al apagar."""
+    settings = Settings()
+    mongo_client = crear_cliente_mongo(settings.mongo_uri)
+    redis_client = crear_cliente_redis(settings.redis_url)
+    coleccion = mongo_client[settings.mongo_database][settings.mongo_collection]
+    repository = MongoRepository(coleccion)
+    await repository.crear_indices()
+    cache = RedisCache(redis_client)
+    lock = RedisLock(redis_client, settings.lock_timeout_seconds)
+    app.state.documento_service = DocumentoService(repository, cache, lock)
+    try:
+        yield
+    finally:
+        mongo_client.close()
+        await redis_client.aclose()
+
+
+app = FastAPI(title="persistencia-actualizaciones", lifespan=lifespan)
 
 app.include_router(health_router)
 app.include_router(documento_router)
