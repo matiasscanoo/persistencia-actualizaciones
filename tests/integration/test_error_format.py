@@ -107,7 +107,7 @@ def test_patch_pdf_con_id_no_uuid_devuelve_400(cliente_http):
     assert respuesta.status_code == 400
     error = respuesta.json()["error"]
     assert error["code"] == "VALIDATION_ERROR"
-    assert error["details"]["errors"][0]["field"] == "documento_id"
+    assert error["details"]["errors"][0]["field"] == "id"
 
 
 def test_patch_pdf_de_id_inexistente_devuelve_404(cliente_http):
