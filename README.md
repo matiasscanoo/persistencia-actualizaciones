@@ -158,8 +158,10 @@ uv run pytest tests/ -v
 ```
 
 Los tests de "MongoDB o Redis caído" no necesitan ningún servicio: apuntan a un
-puerto cerrado y corren siempre. En la integración con el stack completo (#13)
+puerto cerrado y corren siempre. En la integración con el stack completo (#14)
 estos mismos tests se corren contra los contenedores de la infraestructura.
+Resultados de la validación con servicios reales:
+[`docs/integracion.md`](docs/integracion.md).
 
 ## Docker
 
@@ -210,6 +212,10 @@ en vez de `localhost`.
   aplicada (A6).
 - **Red y compose del stack**: se definen en el repo `infraestructura`
   (fuera de este repo); no se versiona acá.
+- **Arranque**: al iniciar, el servicio crea el índice único de `checksum`. Si
+  MongoDB no responde, **no arranca** (`exit 3` a los ~5 s): sin ese índice no
+  hay garantía de unicidad. El compose del stack tiene que declarar
+  `restart: unless-stopped` y `depends_on: mongo: condition: service_healthy`.
 
 ## Deuda técnica
 
@@ -223,5 +229,10 @@ en vez de `localhost`.
   invalidación este servicio no escribe caché, así que no tiene un TTL
   propio que aplicar; la variable existe en el contrato compartido pero
   queda sin uso acá. El TTL real lo aplica persistencia-consultas.
+- **El access log de uvicorn no lleva `correlation_id`**: lo emite el servidor
+  fuera del contexto del request, así que no cumple del todo el contrato 6.5
+  ("toda línea de log del request lleva el `correlation_id`"). Todas las líneas
+  que emite la app sí lo llevan. Para cubrirlo habría que desactivar el access log
+  de uvicorn y loguear el acceso desde el middleware.
 - El resto de las ambigüedades y su estado (acordada / abierta a
   comunicar): [`docs/contrato.md`](docs/contrato.md#10-ambigüedades).
