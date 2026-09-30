@@ -85,3 +85,34 @@ uv run pytest tests/ -v
 Los tests de "MongoDB o Redis caído" no necesitan ningún servicio: apuntan a un
 puerto cerrado y corren siempre. En la integración con el stack completo (#13)
 estos mismos tests se corren contra los contenedores de la infraestructura.
+
+## Docker
+
+```bash
+docker build -t persistencia-actualizaciones .
+```
+
+La imagen (`python:3.11-slim`) instala las dependencias con `uv sync --frozen`
+antes de copiar `app/`, para aprovechar la cache de capas. El proceso corre
+como usuario sin privilegios (`appuser`, no root) y expone el puerto `8000`
+con un `HEALTHCHECK` contra `GET /health` hecho con la librería estándar de
+Python (sin agregar `curl` a la imagen). No incluye `.env`, tests ni
+credenciales (ver `.dockerignore`): toda la configuración se inyecta en
+runtime.
+
+```bash
+docker run -d --name persistencia-actualizaciones \
+  --env-file .env \
+  -p 8000:8000 \
+  persistencia-actualizaciones
+```
+
+Variables: las de la tabla de [Configuración](#configuración), más `PORT`
+(opcional, por defecto `8000`) para el puerto de escucha de uvicorn dentro del
+contenedor. `PORT` no es parte del contrato compartido (A12 en
+[`docs/contrato.md`](docs/contrato.md)).
+
+Para conectar el contenedor a MongoDB y Redis del stack compartido, unirlo a
+la red de `infraestructura` (`docker network connect <red> persistencia-actualizaciones`)
+y usar en `MONGO_URI`/`REDIS_URL` el nombre de servicio de esos contenedores
+en vez de `localhost`.
