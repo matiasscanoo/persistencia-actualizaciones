@@ -35,3 +35,7 @@ target-version = ["py310"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
+
+[tool.ruff.lint.flake8-bugbear]
+# Depends() en el default del parámetro es el patrón de FastAPI, no un bug.
+extend-immutable-calls = ["fastapi.Depends"]

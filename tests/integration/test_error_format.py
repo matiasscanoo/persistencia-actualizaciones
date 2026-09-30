@@ -59,7 +59,9 @@ def _cliente_con(repository=None, cache=None, lock=None) -> TestClient:
         lock or InMemoryLock(),
     )
     app.dependency_overrides[get_documento_service] = lambda: servicio
-    return TestClient(app)
+    # raise_server_exceptions=False: se quiere el 500 como respuesta, no que
+    # TestClient relance la excepción no controlada.
+    return TestClient(app, raise_server_exceptions=False)
 
 
 def test_post_pdf_con_checksum_invalido_devuelve_400_validation_error(cliente_http):
@@ -149,6 +151,7 @@ def test_post_pdf_con_error_no_controlado_devuelve_500_sin_filtrar_detalle():
     error = respuesta.json()["error"]
     assert error["code"] == "INTERNAL_ERROR"
     assert "boom" not in respuesta.text
+    assert error["correlation_id"] == respuesta.headers["X-Correlation-ID"]
 
 
 def test_correlation_id_se_respeta_si_viene_en_el_header(cliente_http):
