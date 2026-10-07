@@ -169,7 +169,7 @@ Resultados de la validación con servicios reales:
 docker build -t persistencia-actualizaciones .
 ```
 
-La imagen (`python:3.11-slim`) instala las dependencias con `uv sync --frozen`
+La imagen (`python:3.12-slim`) instala las dependencias con `uv sync --frozen`
 antes de copiar `app/`, para aprovechar la cache de capas. El proceso corre
 como usuario sin privilegios (`appuser`, no root) y expone el puerto `8000`
 con un `HEALTHCHECK` contra `GET /health` hecho con la librería estándar de
