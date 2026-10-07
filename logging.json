@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+  "filters": {
+    "correlation_id": {
+      "()": "app.core.logging_context.CorrelationIdFilter"
+    }
+  },
+  "formatters": {
+    "contrato": {
+      "format": "%(asctime)s %(levelname)s %(name)s correlation_id=%(correlation_id)s %(message)s"
+    }
+  },
+  "handlers": {
+    "stdout": {
+      "class": "logging.StreamHandler",
+      "formatter": "contrato",
+      "stream": "ext://sys.stdout",
+      "filters": [
+        "correlation_id"
+      ]
+    }
+  },
+  "loggers": {
+    "uvicorn": {
+      "handlers": [],
+      "propagate": true
+    },
+    "uvicorn.error": {
+      "handlers": [],
+      "propagate": true
+    },
+    "uvicorn.access": {
+      "handlers": [],
+      "propagate": false
+    },
+    "pymongo": {
+      "level": "WARNING"
+    }
+  },
+  "root": {
+    "handlers": [
+      "stdout"
+    ],
+    "level": "INFO"
+  }
+}

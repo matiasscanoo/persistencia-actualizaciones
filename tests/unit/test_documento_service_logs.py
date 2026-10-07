@@ -43,6 +43,7 @@ async def test_crear_registra_el_id_y_el_checksum(servicio, caplog) -> None:
 async def test_actualizar_nombre_registra_el_id(servicio, caplog) -> None:
     creado = await servicio.crear(**DATOS)
     caplog.set_level(logging.INFO)
+    caplog.clear()
 
     await servicio.actualizar_nombre(creado.id, nombre="otro.pdf")
 
@@ -52,6 +53,7 @@ async def test_actualizar_nombre_registra_el_id(servicio, caplog) -> None:
 async def test_eliminar_registra_el_id(servicio, caplog) -> None:
     creado = await servicio.crear(**DATOS)
     caplog.set_level(logging.INFO)
+    caplog.clear()
 
     await servicio.eliminar(creado.id)
 
