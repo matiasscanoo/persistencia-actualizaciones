@@ -12,13 +12,15 @@ import pytest_asyncio
 from fastapi.testclient import TestClient
 
 from app.core.database import crear_cliente_mongo, crear_cliente_redis
-from app.core.dependencies import get_documento_service
+from app.core.dependencies import get_documento_service, get_salud_service
 from app.core.memory_cache import InMemoryCache
 from app.core.memory_lock import InMemoryLock
 from app.core.memory_repository import InMemoryRepository
 from app.core.mongo_repository import MongoRepository
 from app.main import app
 from app.services.documento_service import DocumentoService
+from app.services.salud_service import SaludService
+from tests.dobles import DependenciaFija
 
 TEST_MONGO_URI = os.environ.get("TEST_MONGO_URI")
 TEST_REDIS_URL = os.environ.get("TEST_REDIS_URL")
@@ -62,6 +64,8 @@ def cliente_http(repositorio_en_memoria, cache_en_memoria, lock_en_memoria):
         repositorio_en_memoria, cache_en_memoria, lock_en_memoria
     )
     app.dependency_overrides[get_documento_service] = lambda: servicio
+    salud = SaludService(DependenciaFija(True), DependenciaFija(True))
+    app.dependency_overrides[get_salud_service] = lambda: salud
     cliente = TestClient(app)
     cliente.cache = cache_en_memoria
     yield cliente
