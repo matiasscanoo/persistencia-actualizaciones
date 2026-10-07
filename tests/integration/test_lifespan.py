@@ -88,3 +88,14 @@ def test_lifespan_aplica_log_level(
             assert root.level == logging.DEBUG
     finally:
         root.setLevel(nivel)
+
+
+def test_health_con_mongodb_y_redis_reales(entorno_de_integracion: str) -> None:
+    with TestClient(app) as cliente:
+        respuesta = cliente.get("/health")
+
+    assert respuesta.status_code == 200
+    assert respuesta.json() == {
+        "status": "ok",
+        "dependencias": {"mongodb": "ok", "redis": "ok"},
+    }
