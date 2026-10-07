@@ -20,7 +20,7 @@ from app.core.exceptions import (
     LockTimeoutError,
     ResourceNotFoundError,
 )
-from app.core.logging_context import CorrelationIdFilter, correlation_id_var
+from app.core.logging_context import correlation_id_var, crear_handler
 from app.core.mongo_repository import MongoRepository
 from app.core.redis_cache import RedisCache
 from app.core.redis_lock import RedisLock
@@ -36,14 +36,7 @@ MAX_LARGO_CORRELATION_ID = 128
 
 def _configurar_logging() -> None:
     """Cada línea de log incluye el correlation_id del request en curso."""
-    handler = logging.StreamHandler()
-    handler.addFilter(CorrelationIdFilter())
-    handler.setFormatter(
-        logging.Formatter(
-            "%(asctime)s %(levelname)s [%(correlation_id)s] %(name)s: %(message)s"
-        )
-    )
-    logging.basicConfig(level=logging.INFO, handlers=[handler])
+    logging.basicConfig(level=logging.INFO, handlers=[crear_handler()])
 
 
 _configurar_logging()
