@@ -229,10 +229,10 @@ en vez de `localhost`.
   invalidación este servicio no escribe caché, así que no tiene un TTL
   propio que aplicar; la variable existe en el contrato compartido pero
   queda sin uso acá. El TTL real lo aplica persistencia-consultas.
-- **El access log de uvicorn no lleva `correlation_id`**: lo emite el servidor
-  fuera del contexto del request, así que no cumple del todo el contrato 6.5
-  ("toda línea de log del request lleva el `correlation_id`"). Todas las líneas
-  que emite la app sí lo llevan. Para cubrirlo habría que desactivar el access log
-  de uvicorn y loguear el acceso desde el middleware.
+- **Access log con `correlation_id`** (resuelto en la auditoría de
+  integración): la imagen corre uvicorn con `--no-access-log` y el middleware
+  registra cada request (método, ruta, status y duración) dentro de su contexto,
+  así que toda línea lleva el `correlation_id` (contrato 6.5). Los logs van a
+  `stdout` (12-Factor XI).
 - El resto de las ambigüedades y su estado (acordada / abierta a
   comunicar): [`docs/contrato.md`](docs/contrato.md#10-ambigüedades).

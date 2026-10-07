@@ -1,6 +1,7 @@
 """Composición de la aplicación: routers, middleware, handlers de error y DI."""
 
 import logging
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from uuid import uuid4
@@ -20,7 +21,7 @@ from app.core.exceptions import (
     LockTimeoutError,
     ResourceNotFoundError,
 )
-from app.core.logging_context import CorrelationIdFilter, correlation_id_var
+from app.core.logging_context import correlation_id_var, crear_handler
 from app.core.mongo_repository import MongoRepository
 from app.core.redis_cache import RedisCache
 from app.core.redis_lock import RedisLock
@@ -36,14 +37,7 @@ MAX_LARGO_CORRELATION_ID = 128
 
 def _configurar_logging() -> None:
     """Cada línea de log incluye el correlation_id del request en curso."""
-    handler = logging.StreamHandler()
-    handler.addFilter(CorrelationIdFilter())
-    handler.setFormatter(
-        logging.Formatter(
-            "%(asctime)s %(levelname)s [%(correlation_id)s] %(name)s: %(message)s"
-        )
-    )
-    logging.basicConfig(level=logging.INFO, handlers=[handler])
+    logging.basicConfig(level=logging.INFO, handlers=[crear_handler()])
 
 
 _configurar_logging()
@@ -95,8 +89,17 @@ async def middleware_correlation_id(request: Request, call_next):
     correlation_id = _resolver_correlation_id(request.headers.get("X-Correlation-ID"))
     request.state.correlation_id = correlation_id
     token = correlation_id_var.set(correlation_id)
+    inicio = time.perf_counter()
     try:
         response = await call_next(request)
+        # Reemplaza al access log de uvicorn, que no lleva el correlation_id.
+        logger.info(
+            "method=%s path=%s status=%s duracion_ms=%.1f",
+            request.method,
+            request.url.path,
+            response.status_code,
+            (time.perf_counter() - inicio) * 1000,
+        )
     finally:
         correlation_id_var.reset(token)
     response.headers["X-Correlation-ID"] = correlation_id
