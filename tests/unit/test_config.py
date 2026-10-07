@@ -29,3 +29,14 @@ def test_settings_falla_si_lock_timeout_no_es_positivo(
 
     with pytest.raises(ValidationError, match="lock_timeout_seconds"):
         Settings(_env_file=None)
+
+
+def test_log_level_es_opcional_e_info_por_defecto(entorno_valido):
+    assert Settings(_env_file=None).log_level == "INFO"
+
+
+def test_log_level_invalido_impide_arrancar(entorno_valido, monkeypatch):
+    monkeypatch.setenv("LOG_LEVEL", "VERBOSE")
+
+    with pytest.raises(ValidationError, match="log_level"):
+        Settings(_env_file=None)
