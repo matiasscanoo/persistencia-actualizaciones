@@ -1,5 +1,7 @@
 # Imagen del microservicio de escritura persistencia-actualizaciones.
-FROM python:3.11-slim
+# python:3.12-slim ya no trae setuptools ni wheel preinstalados (en 3.11-slim, Grype
+# marcaba wheel y jaraco-context con vulnerabilidades High).
+FROM python:3.12-slim
 
 # Binario de uv, sin instalar nada por red aparte de la imagen oficial.
 COPY --from=ghcr.io/astral-sh/uv:0.11.15 /uv /uvx /usr/local/bin/
