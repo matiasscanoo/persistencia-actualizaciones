@@ -61,9 +61,12 @@ las dependencias se detienen con el servicio en marcha.
    fallar rápido a arrancar sin él. **Requisito para infraestructura**:
    `restart: unless-stopped` y `depends_on: mongo: condition: service_healthy`.
    Documentado en el README.
-3. **El access log de uvicorn no lleva `correlation_id`**. Lo emite el servidor,
-   fuera del contexto del request de la app. Todas las líneas de la app sí lo
-   llevan. Declarado como deuda técnica en el README frente al contrato 6.5.
+3. **Access log con `correlation_id`** (resuelto). La imagen desactiva el access
+   log de uvicorn y el middleware registra cada request con su `correlation_id`.
+   Todos los logs van a `stdout`.
+4. **Esquema de MongoDB acordado con persistencia-consultas (A10).** Consultas
+   lee `_id` (UUID en texto) y serializa las fechas con milisegundos y `Z` (A15),
+   igual que este servicio.
 
 ## Pendiente cuando exista el stack
 
