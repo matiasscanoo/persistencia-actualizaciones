@@ -3,14 +3,16 @@
 # marcaba wheel y jaraco-context con vulnerabilidades High).
 FROM python:3.12-slim
 
-# Binario de uv, sin instalar nada por red aparte de la imagen oficial.
-COPY --from=ghcr.io/astral-sh/uv:0.11.15 /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 
 # Dependencias primero (cache de capas): solo se reinstalan si cambia el lock.
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+# uv se monta solo durante este RUN (--mount=from=...) y no queda en la imagen final:
+# Grype marcaba High en librerías de Rust compiladas dentro del binario (quinn-proto,
+# rustls-webpki).
+RUN --mount=from=ghcr.io/astral-sh/uv:0.11.15,source=/uv,target=/bin/uv \
+    uv sync --frozen --no-dev --no-install-project
 
 COPY logging.json ./
 COPY app/ ./app/
