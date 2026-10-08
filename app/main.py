@@ -15,18 +15,20 @@ from app.controllers.documento_controller import router as documento_router
 from app.controllers.health_controller import router as health_router
 from app.core.config import Settings
 from app.core.database import crear_cliente_mongo, crear_cliente_redis
+from app.core.dependencias import MongoDependencia, RedisDependencia
 from app.core.exceptions import (
     DatabaseError,
     DuplicateChecksumError,
     LockTimeoutError,
     ResourceNotFoundError,
 )
-from app.core.logging_context import correlation_id_var, crear_handler
+from app.core.logging_context import configurar_logs, correlation_id_var
 from app.core.mongo_repository import MongoRepository
 from app.core.redis_cache import RedisCache
 from app.core.redis_lock import RedisLock
 from app.schemas.error import ErrorDetail, ErrorResponse
 from app.services.documento_service import DocumentoService
+from app.services.salud_service import SaludService
 
 logger = logging.getLogger(__name__)
 
@@ -35,18 +37,14 @@ logger = logging.getLogger(__name__)
 MAX_LARGO_CORRELATION_ID = 128
 
 
-def _configurar_logging() -> None:
-    """Cada línea de log incluye el correlation_id del request en curso."""
-    logging.basicConfig(level=logging.INFO, handlers=[crear_handler()])
-
-
-_configurar_logging()
+configurar_logs()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Arma DocumentoService con adaptadores reales; cierra las conexiones al apagar."""
     settings = Settings()
+    logging.getLogger().setLevel(settings.log_level)
     mongo_client = crear_cliente_mongo(settings.mongo_uri)
     redis_client = crear_cliente_redis(settings.redis_url)
     coleccion = mongo_client[settings.mongo_database][settings.mongo_collection]
@@ -55,11 +53,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     cache = RedisCache(redis_client)
     lock = RedisLock(redis_client, settings.lock_timeout_seconds)
     app.state.documento_service = DocumentoService(repository, cache, lock)
+    app.state.salud_service = SaludService(
+        MongoDependencia(mongo_client), RedisDependencia(redis_client)
+    )
+    logger.info("servicio iniciado")
     try:
         yield
     finally:
+        # uvicorn llega acá ante SIGTERM, después de cerrar el puerto y terminar
+        # las escrituras en curso (12-Factor IX).
+        logger.info("apagado iniciado")
         mongo_client.close()
         await redis_client.aclose()
+        logger.info("apagado completo")
 
 
 app = FastAPI(title="persistencia-actualizaciones", lifespan=lifespan)

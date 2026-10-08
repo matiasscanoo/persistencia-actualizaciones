@@ -5,6 +5,7 @@ Se saltea si no están definidas TEST_MONGO_URI y TEST_REDIS_URL, igual que el
 resto de los tests que necesitan servicios reales.
 """
 
+import logging
 import os
 from uuid import uuid4
 
@@ -61,3 +62,40 @@ def test_lifespan_arma_documento_service_y_persiste_en_mongo_real(
     assert guardado is not None
     assert guardado["nombre"] == "contrato.pdf"
     assert guardado["checksum"] == CHECKSUM
+
+
+def test_lifespan_registra_inicio_y_apagado_ordenados(
+    entorno_de_integracion: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO)
+
+    with TestClient(app):
+        pass
+
+    mensajes = [r.getMessage() for r in caplog.records]
+    assert "servicio iniciado" in mensajes
+    assert mensajes.index("apagado iniciado") < mensajes.index("apagado completo")
+
+
+def test_lifespan_aplica_log_level(
+    entorno_de_integracion: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = logging.getLogger()
+    nivel = root.level
+    monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+    try:
+        with TestClient(app):
+            assert root.level == logging.DEBUG
+    finally:
+        root.setLevel(nivel)
+
+
+def test_health_con_mongodb_y_redis_reales(entorno_de_integracion: str) -> None:
+    with TestClient(app) as cliente:
+        respuesta = cliente.get("/health")
+
+    assert respuesta.status_code == 200
+    assert respuesta.json() == {
+        "status": "ok",
+        "dependencias": {"mongodb": "ok", "redis": "ok"},
+    }

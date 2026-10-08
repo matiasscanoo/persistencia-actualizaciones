@@ -122,14 +122,16 @@ escritura (A3).
 
 Sin cuerpo. Solo incluye el header `X-Correlation-ID`.
 
-### 3.3 `GET /health` → `200`
+### 3.3 `GET /health` → `200` o `503`
 
 ```json
-{ "status": "ok" }
+{ "status": "ok", "dependencias": { "mongodb": "ok", "redis": "caido" } }
 ```
 
-Chequeo de *liveness*: indica que el proceso responde y no consulta MongoDB ni
-Redis (A16).
+*(Contrato microservicios-pdf 1.2.0, reemplaza A16.)* Consulta MongoDB y Redis,
+cada uno con un timeout de 1 s como máximo. Redis caído responde `200` e informa
+`"redis": "caido"` (fail-open). MongoDB caído responde
+`503 {"status": "error", ...}`.
 
 ## 4. Errores
 
@@ -392,7 +394,7 @@ Estados:
 | A13 | El contrato no define restricciones de campos más allá del tipo. | `nombre` 1–255 caracteres, no vacío ni solo espacios (igual que el monolito). `texto` admite `""` y no tiene máximo propio (lo acotan el límite de 16 MiB por documento BSON y el tamaño máximo de validacion-pdf). `tamano_bytes >= 1`. `paginas >= 0`. Enteros estrictos, sin convertir tipos. | orquestador, extraccion-texto | orquestador | Acordada: contrato microservicios-pdf 1.1.0 |
 | A14 | `details` es un objeto sin estructura definida. | Por código: `VALIDATION_ERROR` → `{"errors": [{"field", "message"}]}`; `RESOURCE_NOT_FOUND` → `{"id"}`; `DUPLICATE_CHECKSUM` → `{"checksum"}`; `DEPENDENCY_UNAVAILABLE` → `{"reason"}`; `DATABASE_ERROR` e `INTERNAL_ERROR` → `{}`. Los clientes deciden por `code`, nunca por `details`. | orquestador | orquestador | Acordada: contrato microservicios-pdf 1.1.0 |
 | A15 | El contrato dice ISO-8601 UTC, pero no define la precisión ni la zona. MongoDB guarda milisegundos: si el POST devolviera microsegundos, persistencia-consultas devolvería otra fecha para el mismo documento. | Truncar a milisegundos al crear la entidad y serializar con sufijo `Z` (`2026-09-14T18:00:00.000Z`). | persistencia-consultas | persistencia-consultas | Acordada: persistencia-consultas serializa con milisegundos y `Z` (2026-10-06) |
-| A16 | `GET /health` solo define el `200`. | Cuerpo `{"status": "ok"}`, *liveness* sin chequear MongoDB ni Redis, para que una caída de la base no provoque reinicios del contenedor. | infraestructura | infraestructura | Acordada: contrato microservicios-pdf 1.1.0 |
+| A16 | `GET /health` solo define el `200`. | Cuerpo `{"status": "ok"}`, *liveness* sin chequear MongoDB ni Redis, para que una caída de la base no provoque reinicios del contenedor. | infraestructura | infraestructura | Acordada en la 1.1.0; **reemplazada en la 1.2.0** por pedido del profesor: informa MongoDB y Redis, `503` solo si MongoDB no responde (ver 3.3). Docker no reinicia un contenedor `unhealthy`, así que no hay reinicios en cadena. |
 | A17 | No se define qué hacer si `X-Correlation-ID` viene con un formato inesperado. | Se propaga tal cual si no está vacío, tiene hasta 128 caracteres y usa solo ASCII imprimible (evita inyección en logs). Si no, se genera un UUID v4. No se exige que sea UUID. | orquestador | orquestador | Acordada: contrato microservicios-pdf 1.1.0 |
 | A18 | Rutas o métodos no definidos: FastAPI responde `404`/`405` con `{"detail": ...}`, fuera del formato común. | Envolver en el formato común. Ruta inexistente → `404 RESOURCE_NOT_FOUND`. Método no permitido → se mantiene `405` con `code = "VALIDATION_ERROR"` y `details.reason = "method_not_allowed"`, sin agregar códigos al contrato 1.0.0. | — | cátedra | Acordada: contrato microservicios-pdf 1.1.0 |
 

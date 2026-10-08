@@ -30,6 +30,7 @@ lista los campos faltantes. Para desarrollo local, copiar `.env.example` a `.env
 | `MONGO_COLLECTION` | sí | Colección de documentos PDF (compartida con persistencia-consultas) | `documentos` |
 | `REDIS_URL` | sí | Conexión a Redis (lock e invalidación) | `redis://localhost:6379/0` |
 | `LOCK_TIMEOUT_SECONDS` | sí | Expiración y espera máxima del lock; entero mayor que 0 | `5` |
+| `LOG_LEVEL` | no | `DEBUG`, `INFO` (por defecto), `WARNING` o `ERROR` (contrato 1.2.0); otro valor impide arrancar | `INFO` |
 
 `REDIS_TTL_SECONDS` figura en el contrato pero este servicio **no la consume**
 (ver [Deuda técnica](#deuda-técnica)). Si está definida en el entorno, se ignora.
@@ -50,7 +51,7 @@ uv run uvicorn app.main:app --reload
 
 Al arrancar, crea el índice único de `checksum` en MongoDB. Con las variables
 completas y los servicios accesibles, `GET /health` responde `200
-{"status": "ok"}` (liveness: no consulta MongoDB ni Redis).
+{"status": "ok", "dependencias": {"mongodb": "ok", "redis": "ok"}}`.
 
 ## Endpoints
 
@@ -62,7 +63,14 @@ en [`docs/contrato.md`](docs/contrato.md).
 | `POST` | `/pdf` | `201` + documento | `400`, `409`, `503`, `500` |
 | `PATCH` | `/pdf/{id}` | `200` + documento | `400`, `404`, `503`, `500` |
 | `DELETE` | `/pdf/{id}` | `204` sin cuerpo | `400`, `404`, `503`, `500` |
-| `GET` | `/health` | `200` | — |
+| `GET` | `/health` | `200` | `503` si MongoDB no responde |
+
+`GET /health` (contrato 1.2.0, reemplaza el liveness sin dependencias de A16)
+consulta MongoDB (`ping`, cortado a 1 s) y Redis (`PING`, con el timeout de 1 s
+del cliente). Con Redis caído responde `200` e informa `"redis": "caido"`: la
+escritura sigue sin lock y sin invalidar (fail-open). Con MongoDB caído responde
+`503 {"status": "error", ...}` y el `HEALTHCHECK` de la imagen falla. Probado en
+el stack de integración (2026-10-07): MongoDB detenido → `503` en 1,0 s.
 
 Toda respuesta, éxito o error, lleva el header `X-Correlation-ID` (se
 respeta el recibido o se genera uno). Los errores usan el formato común
@@ -84,6 +92,38 @@ tests/
 ```
 
 Flujo de dependencias: `controller → service → repository → BD`.
+
+## Logs (12-Factor XI)
+
+Van a `stdout`, sin archivos. La configuración está en [`logging.json`](logging.json),
+en la raíz del repo (formato `dictConfig`): handler a stdout con
+`CorrelationIdFilter` y el formato del contrato 1.2.0 (`pymongo` en `WARNING`).
+El nivel sale de `LOG_LEVEL`, que se aplica en el `lifespan`.
+
+```text
+INFO app.main correlation_id=- servicio iniciado
+INFO app.services.documento_service correlation_id=75c93b70-... documento creado id=13f4459b-... checksum=7e72f0...
+INFO app.main correlation_id=75c93b70-... method=POST path=/pdf status=201 duracion_ms=18.5
+WARNING app.services.documento_service correlation_id=1b2c... Lock no disponible; se escribe sin lock: lock:pdf:checksum:...
+```
+
+| Nivel | Qué registra este servicio |
+|---|---|
+| `INFO` | Cada request (método, ruta, status, duración), documento creado (`id`, `checksum`), modificado o eliminado (`id`), inicio y apagado. |
+| `WARNING` | Redis no disponible para el lock o la invalidación (fail-open), base de datos no disponible. |
+| `ERROR` | Errores no controlados, con traza. |
+
+**No se registran** el nombre ni el texto del documento (pueden tener datos
+personales); hay un test que lo verifica.
+
+## Finalización segura (12-Factor IX)
+
+La imagen corre uvicorn como PID 1 (`exec`) con `--timeout-graceful-shutdown 30`.
+Ante `SIGTERM` (`docker stop`) deja de aceptar conexiones, termina las escrituras
+en curso y en el `lifespan` cierra MongoDB y Redis (`apagado iniciado` /
+`apagado completo`); sale con código 0 (probado con la imagen `1.0.2`). Cada alta
+es una sola escritura en MongoDB: aunque llegara un `SIGKILL`, no queda un
+documento a medias.
 
 ## Decisiones técnicas
 
@@ -166,7 +206,7 @@ Resultados de la validación con servicios reales:
 ## Docker
 
 ```bash
-docker build -t persistencia-actualizaciones .
+docker build -t persistencia-actualizaciones:1.0.2 .
 ```
 
 La imagen (`python:3.12-slim`) instala las dependencias con `uv sync --frozen`
@@ -233,6 +273,7 @@ en vez de `localhost`.
   integración): la imagen corre uvicorn con `--no-access-log` y el middleware
   registra cada request (método, ruta, status y duración) dentro de su contexto,
   así que toda línea lleva el `correlation_id` (contrato 6.5). Los logs van a
-  `stdout` (12-Factor XI).
+  `stdout` (12-Factor XI). Desde el contrato 1.2.0 el formato es
+  `correlation_id=<id>` (antes `[<id>]`), igual en los cinco servicios.
 - El resto de las ambigüedades y su estado (acordada / abierta a
   comunicar): [`docs/contrato.md`](docs/contrato.md#10-ambigüedades).

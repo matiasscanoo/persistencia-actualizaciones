@@ -66,6 +66,8 @@ class DocumentoService:
         async with self._con_lock(_lock_de(_clave_por_checksum(checksum))):
             creado = await self._repository.add(documento)
             await self._invalidar(creado)
+        # Sin nombre ni texto (contrato 1.2.0): pueden tener datos personales.
+        logger.info("documento creado id=%s checksum=%s", creado.id, creado.checksum)
         return creado
 
     async def actualizar_nombre(
@@ -80,6 +82,7 @@ class DocumentoService:
             documento.update_timestamp()
             actualizado = await self._repository.update(documento)
             await self._invalidar(actualizado)
+        logger.info("documento modificado id=%s", actualizado.id)
         return actualizado
 
     async def eliminar(self, documento_id: str) -> None:
@@ -89,6 +92,7 @@ class DocumentoService:
             if eliminado is None:
                 raise ResourceNotFoundError(documento_id)
             await self._invalidar(eliminado)
+        logger.info("documento eliminado id=%s", eliminado.id)
 
     @asynccontextmanager
     async def _con_lock(self, clave: str) -> AsyncIterator[None]:

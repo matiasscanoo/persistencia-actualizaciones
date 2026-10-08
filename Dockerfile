@@ -12,6 +12,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
+COPY logging.json ./
 COPY app/ ./app/
 
 # Usuario sin privilegios; dueño de /app (venv + código) antes de bajar permisos.
@@ -28,4 +29,6 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 # exec: uvicorn queda como PID 1 y recibe SIGTERM directo (apagado prolijo del lifespan).
 # --no-access-log: la app ya registra cada request con su correlation_id.
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --no-access-log"]
+# --timeout-graceful-shutdown: deja de aceptar conexiones y espera hasta 30 s a que
+# terminen las escrituras en curso antes de salir (contrato 1.2.0, 12-Factor IX).
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --no-access-log --timeout-graceful-shutdown 30"]
