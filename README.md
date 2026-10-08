@@ -206,8 +206,13 @@ Resultados de la validación con servicios reales:
 ## Docker
 
 ```bash
-docker build -t persistencia-actualizaciones:1.0.2 .
+docker build -t persistencia-actualizaciones:1.0.3 .
 ```
+
+La versión del servicio es la de `pyproject.toml` (1.0.3): es la que muestra Swagger en
+`/docs` y el tag de la imagen. `tests/integration/test_openapi.py` verifica que
+`FastAPI(version=...)` en `app/main.py` coincida con `pyproject.toml`; en una versión
+nueva se cambian los dos.
 
 La imagen (`python:3.12-slim`) instala las dependencias con `uv sync --frozen`
 antes de copiar `app/`, para aprovechar la cache de capas. El proceso corre
