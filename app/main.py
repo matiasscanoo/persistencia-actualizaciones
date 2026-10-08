@@ -68,7 +68,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("apagado completo")
 
 
-app = FastAPI(title="persistencia-actualizaciones", lifespan=lifespan)
+app = FastAPI(title="persistencia-actualizaciones", version="1.0.3", lifespan=lifespan)
 
 app.include_router(health_router)
 app.include_router(documento_router)
