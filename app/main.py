@@ -1,6 +1,7 @@
 """Composición de la aplicación: routers, middleware, handlers de error y DI."""
 
 import logging
+import socket
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -14,6 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.controllers.documento_controller import router as documento_router
 from app.controllers.health_controller import router as health_router
 from app.core.config import Settings
+from app.core.consul_registry import ConsulRegistry
 from app.core.database import crear_cliente_mongo, crear_cliente_redis
 from app.core.dependencias import MongoDependencia, RedisDependencia
 from app.core.exceptions import (
@@ -56,6 +58,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.salud_service = SaludService(
         MongoDependencia(mongo_client), RedisDependencia(redis_client)
     )
+    registry = _consul_registry(settings)
+    if registry:
+        await registry.register()
     logger.info("servicio iniciado")
     try:
         yield
@@ -63,9 +68,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # uvicorn llega acá ante SIGTERM, después de cerrar el puerto y terminar
         # las escrituras en curso (12-Factor IX).
         logger.info("apagado iniciado")
+        if registry:
+            try:
+                await registry.deregister()
+            except Exception:
+                logger.exception("no se pudo deregistrar el servicio de Consul")
         mongo_client.close()
         await redis_client.aclose()
         logger.info("apagado completo")
+
+
+def _consul_registry(settings: Settings) -> ConsulRegistry | None:
+    if not settings.consul_enabled:
+        return None
+    return ConsulRegistry(
+        settings=settings,
+        instance_id=f"persistencia-actualizaciones-{socket.gethostname()}",
+    )
 
 
 app = FastAPI(title="persistencia-actualizaciones", version="1.0.4", lifespan=lifespan)

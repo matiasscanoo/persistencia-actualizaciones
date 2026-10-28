@@ -1,0 +1,62 @@
+name: persistencia-actualizaciones
+
+services:
+  persistencia-actualizaciones:
+    build: .
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DATABASE: pdfs_db
+      MONGO_COLLECTION: pdfs
+      REDIS_URL: redis://redis:6379/0
+      LOCK_TIMEOUT_SECONDS: "5"
+      CONSUL_ENABLED: "true"
+      CONSUL_HTTP_ADDR: http://consul:8500
+      CONSUL_HTTP_TOKEN_FILE: /run/secrets/consul_microservices_token
+      CONSUL_SERVICE_ADDRESS: persistencia-actualizaciones
+      CONSUL_SERVICE_PORT: "8000"
+    secrets:
+      - consul_microservices_token
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - redutn
+
+  mongo:
+    image: mongo:7.0
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - redutn
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - redutn
+
+networks:
+  redutn:
+    external: true
+    name: redutn
+
+volumes:
+  mongo_data:
+  redis_data:
+
+secrets:
+  consul_microservices_token:
+    file: ../dockers/consul/generated/microservices.token
