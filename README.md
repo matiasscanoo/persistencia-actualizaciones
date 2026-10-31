@@ -255,12 +255,17 @@ en vez de `localhost`.
   DATABASE_ERROR` como errores transitorios, reintentables. Un `DELETE`
   repetido responde `404` y se interpreta como compensación SAGA ya
   aplicada (A6).
-- **Red y compose del stack**: se definen en el repo `infraestructura`
-  (fuera de este repo); no se versiona acá.
+- **Red y compose del stack**: la infraestructura (Consul, Traefik, MongoDB y Redis) es
+  el repo `infraestructura`, clonado como `dockers`, y se levanta primero. El
+  `docker-compose.yml` de este repo levanta solo el servicio sobre esa infraestructura
+  (misma MongoDB y mismo Redis que `persistencia-consultas`) y se registra en Consul con el
+  token de `../dockers/consul/generated/`. El sistema completo se levanta con el compose de
+  `integracion`.
 - **Arranque**: al iniciar, el servicio crea el índice único de `checksum`. Si
   MongoDB no responde, **no arranca** (`exit 3` a los ~5 s): sin ese índice no
   hay garantía de unicidad. El compose del stack tiene que declarar
-  `restart: unless-stopped` y `depends_on: mongo: condition: service_healthy`.
+  `restart: unless-stopped`: si la infraestructura todavía no está lista, Docker lo
+  reinicia hasta que MongoDB responda.
 
 ## Deuda técnica
 
