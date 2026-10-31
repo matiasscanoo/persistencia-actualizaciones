@@ -87,7 +87,7 @@ def _consul_registry(settings: Settings) -> ConsulRegistry | None:
     )
 
 
-app = FastAPI(title="persistencia-actualizaciones", version="1.0.4", lifespan=lifespan)
+app = FastAPI(title="persistencia-actualizaciones", version="1.0.5", lifespan=lifespan)
 
 app.include_router(health_router)
 app.include_router(documento_router)
