@@ -39,6 +39,22 @@ lista los campos faltantes. Para desarrollo local, copiar `.env.example` a `.env
 (A12): fija el puerto de escucha de uvicorn. Se usa al ejecutar localmente o
 con Docker, no está en `.env.example`.
 
+### Configuración desde Consul (contrato 1.6.0)
+
+Con `CONSUL_ENABLED=true`, las variables de la tabla salen del KV de Consul, bajo
+`config/persistencia-actualizaciones/` (por ejemplo `config/persistencia-actualizaciones/LOCK_TIMEOUT_SECONDS`), y tienen prioridad
+sobre el entorno. Del entorno solo llega cómo conectarse a Consul: `CONSUL_ENABLED`,
+`CONSUL_HTTP_ADDR` y `CONSUL_HTTP_TOKEN_FILE` (el token, como Docker secret).
+`CONSUL_SERVICE_ADDRESS` y `CONSUL_SERVICE_PORT` también pueden venir del KV.
+
+- Las claves las carga el servicio `consul-config` del compose de integración, desde
+  `integracion/env/actualizaciones.env`.
+- Si no hay claves bajo `config/persistencia-actualizaciones/` o Consul no responde, el servicio no
+  arranca: la configuración no se inventa.
+- Sin Consul (tests y desarrollo local), todo sale del entorno, como antes.
+- Lo implementan `app/core/consul_config.py` (lee el KV) y `cargar_settings()` en
+  `app/core/config.py`.
+
 ## Ejecución local
 
 ```bash
