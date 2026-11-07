@@ -14,7 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.controllers.documento_controller import router as documento_router
 from app.controllers.health_controller import router as health_router
-from app.core.config import Settings
+from app.core.config import Settings, cargar_settings
 from app.core.consul_registry import ConsulRegistry
 from app.core.database import crear_cliente_mongo, crear_cliente_redis
 from app.core.dependencias import MongoDependencia, RedisDependencia
@@ -45,7 +45,7 @@ configurar_logs()
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Arma DocumentoService con adaptadores reales; cierra las conexiones al apagar."""
-    settings = Settings()
+    settings = cargar_settings()
     logging.getLogger().setLevel(settings.log_level)
     mongo_client = crear_cliente_mongo(settings.mongo_uri)
     redis_client = crear_cliente_redis(settings.redis_url)
