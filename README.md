@@ -206,10 +206,10 @@ Resultados de la validación con servicios reales:
 ## Docker
 
 ```bash
-docker build -t persistencia-actualizaciones:1.0.5 .
+docker build -t persistencia-actualizaciones:1.1.0 .
 ```
 
-La versión del servicio es la de `pyproject.toml` (1.0.5): es la que muestra Swagger en
+La versión del servicio es la de `pyproject.toml` (1.1.0): es la que muestra Swagger en
 `/docs` y el tag de la imagen. `tests/integration/test_openapi.py` verifica que
 `FastAPI(version=...)` en `app/main.py` coincida con `pyproject.toml`; en una versión
 nueva se cambian los dos.
