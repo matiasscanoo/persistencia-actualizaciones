@@ -1,7 +1,7 @@
-from app.core.dependencia import Dependencia
+from app.core.health_check import HealthCheck
 
 
-class DependenciaFija(Dependencia):
+class HealthCheckFijo(HealthCheck):
     """Servicio de apoyo con disponibilidad fija, para probar /health sin MongoDB ni
     Redis."""
 

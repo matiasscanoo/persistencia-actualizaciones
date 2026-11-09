@@ -7,13 +7,13 @@ from fastapi.testclient import TestClient
 from app.core.dependencies import get_salud_service
 from app.main import app
 from app.services.salud_service import SaludService
-from tests.dobles import DependenciaFija
+from tests.dobles import HealthCheckFijo
 
 
 @pytest.fixture
 def cliente_con_salud():
     def armar(mongodb: bool, redis: bool) -> TestClient:
-        servicio = SaludService(DependenciaFija(mongodb), DependenciaFija(redis))
+        servicio = SaludService(HealthCheckFijo(mongodb), HealthCheckFijo(redis))
         app.dependency_overrides[get_salud_service] = lambda: servicio
         return TestClient(app)
 

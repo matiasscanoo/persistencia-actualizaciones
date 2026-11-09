@@ -17,7 +17,6 @@ from app.controllers.health_controller import router as health_router
 from app.core.config import Settings, cargar_settings
 from app.core.consul_registry import ConsulRegistry
 from app.core.database import crear_cliente_mongo, crear_cliente_redis
-from app.core.dependencias import MongoDependencia, RedisDependencia
 from app.core.exceptions import (
     DatabaseError,
     DuplicateChecksumError,
@@ -25,8 +24,10 @@ from app.core.exceptions import (
     ResourceNotFoundError,
 )
 from app.core.logging_context import configurar_logs, correlation_id_var
+from app.core.mongo_health_check import MongoHealthCheck
 from app.core.mongo_repository import MongoRepository
 from app.core.redis_cache import RedisCache
+from app.core.redis_health_check import RedisHealthCheck
 from app.core.redis_lock import RedisLock
 from app.schemas.error import ErrorDetail, ErrorResponse
 from app.services.documento_service import DocumentoService
@@ -56,7 +57,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     lock = RedisLock(redis_client, settings.lock_timeout_seconds)
     app.state.documento_service = DocumentoService(repository, cache, lock)
     app.state.salud_service = SaludService(
-        MongoDependencia(mongo_client), RedisDependencia(redis_client)
+        MongoHealthCheck(mongo_client), RedisHealthCheck(redis_client)
     )
     registry = _consul_registry(settings)
     if registry:

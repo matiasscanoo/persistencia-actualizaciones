@@ -1,6 +1,6 @@
 import asyncio
 
-from app.core.dependencia import Dependencia
+from app.core.health_check import HealthCheck
 from app.models.estado_de_salud import EstadoDeSalud
 
 
@@ -13,7 +13,7 @@ class SaludService:
     Redis caído se informa pero no cuenta: se escribe sin lock y sin invalidar
     (fail-open), y el índice único de checksum sigue garantizando la unicidad."""
 
-    def __init__(self, mongodb: Dependencia, redis: Dependencia) -> None:
+    def __init__(self, mongodb: HealthCheck, redis: HealthCheck) -> None:
         self._mongodb = mongodb
         self._redis = redis
 

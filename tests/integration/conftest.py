@@ -20,7 +20,7 @@ from app.core.mongo_repository import MongoRepository
 from app.main import app
 from app.services.documento_service import DocumentoService
 from app.services.salud_service import SaludService
-from tests.dobles import DependenciaFija
+from tests.dobles import HealthCheckFijo
 
 TEST_MONGO_URI = os.environ.get("TEST_MONGO_URI")
 TEST_REDIS_URL = os.environ.get("TEST_REDIS_URL")
@@ -64,7 +64,7 @@ def cliente_http(repositorio_en_memoria, cache_en_memoria, lock_en_memoria):
         repositorio_en_memoria, cache_en_memoria, lock_en_memoria
     )
     app.dependency_overrides[get_documento_service] = lambda: servicio
-    salud = SaludService(DependenciaFija(True), DependenciaFija(True))
+    salud = SaludService(HealthCheckFijo(True), HealthCheckFijo(True))
     app.dependency_overrides[get_salud_service] = lambda: salud
     cliente = TestClient(app)
     cliente.cache = cache_en_memoria
