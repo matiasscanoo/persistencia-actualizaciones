@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 
-class Dependencia(ABC):
+class HealthCheck(ABC):
     """Servicio de apoyo que GET /health consulta (contrato 1.2.0)."""
 
     @abstractmethod
