@@ -61,6 +61,7 @@ sobre el entorno. Del entorno solo llega cómo conectarse a Consul: `CONSUL_ENAB
 cp .env.example .env
 # completar MONGO_URI, MONGO_DATABASE, MONGO_COLLECTION, REDIS_URL, LOCK_TIMEOUT_SECONDS
 # con un MongoDB y un Redis alcanzables (docker run mongo:7 / redis:7-alpine, o el stack compartido)
+# CONSUL_ENABLED queda en false: en local no hay Consul
 
 uv run uvicorn app.main:app --reload
 ```
@@ -172,7 +173,8 @@ uv run pytest tests/ -v
 uv run pytest --cov=app --cov-report=term-missing
 ```
 
-La suite es hermética: corre sin `.env`, sin MongoDB y sin Redis. Los tests
+La suite es hermética: corre sin `.env`, sin MongoDB y sin Redis, y un `.env`
+local no la afecta (cada test corre en una carpeta temporal). Los tests
 de service y de la capa HTTP usan los dobles en memoria
 (`InMemoryRepository`, `InMemoryCache`, `InMemoryLock`), inyectados con
 `app.dependency_overrides` — sin mockear internals.
@@ -242,7 +244,7 @@ runtime.
 docker run -d --name persistencia-actualizaciones \
   --env-file .env \
   -p 8000:8000 \
-  persistencia-actualizaciones
+  persistencia-actualizaciones:1.1.0
 ```
 
 Variables: las de la tabla de [Configuración](#configuración), más `PORT`

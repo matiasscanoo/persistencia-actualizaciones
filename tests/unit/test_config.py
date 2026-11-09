@@ -1,7 +1,12 @@
+import shutil
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
-from app.core.config import Settings
+from app.core.config import Settings, cargar_settings
+
+ENV_EXAMPLE = Path(__file__).resolve().parents[2] / ".env.example"
 
 
 def test_settings_lee_las_variables_de_entorno(entorno_valido):
@@ -40,3 +45,11 @@ def test_log_level_invalido_impide_arrancar(entorno_valido, monkeypatch):
 
     with pytest.raises(ValidationError, match="log_level"):
         Settings(_env_file=None)
+
+
+def test_el_env_example_arranca_en_local_sin_consul(entorno_valido):
+    # Paso del README: copiar .env.example a .env y completar MongoDB y Redis.
+    # En local no hay Consul ni el token de /run/secrets.
+    shutil.copy(ENV_EXAMPLE, ".env")
+
+    assert cargar_settings().consul_enabled is False
