@@ -1,10 +1,11 @@
 """Composición de la aplicación: routers, middleware, handlers de error y DI."""
 
+import asyncio
 import logging
 import socket
 import time
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -15,7 +16,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.controllers.documento_controller import router as documento_router
 from app.controllers.health_controller import router as health_router
 from app.core.config import Settings, cargar_settings
-from app.core.consul_registry import ConsulRegistry
+from app.core.consul_registry import INTERVALO_DE_REVISION_S, ConsulRegistry
 from app.core.database import crear_cliente_mongo, crear_cliente_redis
 from app.core.exceptions import (
     DatabaseError,
@@ -60,8 +61,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         MongoHealthCheck(mongo_client), RedisHealthCheck(redis_client)
     )
     registry = _consul_registry(settings)
+    revision = None
     if registry:
         await registry.register()
+        revision = asyncio.create_task(
+            registry.keep_registered(INTERVALO_DE_REVISION_S)
+        )
     logger.info("servicio iniciado")
     try:
         yield
@@ -69,6 +74,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # uvicorn llega acá ante SIGTERM, después de cerrar el puerto y terminar
         # las escrituras en curso (12-Factor IX).
         logger.info("apagado iniciado")
+        if revision:
+            revision.cancel()
+            with suppress(asyncio.CancelledError):
+                await revision
         if registry:
             try:
                 await registry.deregister()

@@ -36,6 +36,9 @@
     },
     "pymongo": {
       "level": "WARNING"
+    },
+    "httpx": {
+      "level": "WARNING"
     }
   },
   "root": {

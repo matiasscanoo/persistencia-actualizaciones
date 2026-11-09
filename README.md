@@ -55,6 +55,13 @@ sobre el entorno. Del entorno solo llega cómo conectarse a Consul: `CONSUL_ENAB
 - Lo implementan `app/core/consul_config.py` (lee el KV) y `cargar_settings()` en
   `app/core/config.py`.
 
+Además, al arrancar el servicio se registra en Consul con un health check contra
+`GET /health` (`app/core/consul_registry.py`). Si el check queda crítico más de 1 minuto
+(por ejemplo, con MongoDB caído), Consul da de baja la instancia. Por eso el servicio
+revisa cada 30 s que siga registrado y, si no está, se vuelve a registrar. Sin esa
+revisión, al volver MongoDB el servicio quedaba sano pero invisible para el orquestador
+hasta reiniciar el contenedor (encontrado en la integración con el stack completo).
+
 ## Ejecución local
 
 ```bash
@@ -114,7 +121,8 @@ Flujo de dependencias: `controller → service → repository → BD`.
 
 Van a `stdout`, sin archivos. La configuración está en [`logging.json`](logging.json),
 en la raíz del repo (formato `dictConfig`): handler a stdout con
-`CorrelationIdFilter` y el formato del contrato 1.2.0 (`pymongo` en `WARNING`).
+`CorrelationIdFilter` y el formato del contrato 1.2.0 (`pymongo` y `httpx` en
+`WARNING`: `httpx` registraría cada revisión del registro en Consul).
 El nivel sale de `LOG_LEVEL`, que se aplica en el `lifespan`.
 
 ```text

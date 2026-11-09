@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import socket
 from dataclasses import dataclass
 from pathlib import Path
@@ -6,6 +8,13 @@ from urllib.parse import quote
 import httpx
 
 from app.core.config import Settings
+
+logger = logging.getLogger(__name__)
+
+# Cada cuánto se revisa que la instancia siga en Consul. Consul la borra si su health
+# check queda crítico más de DeregisterCriticalServiceAfter (1 min, por ejemplo con
+# MongoDB caído); al volver, reaparece en a lo sumo este tiempo.
+INTERVALO_DE_REVISION_S = 30
 
 
 @dataclass(frozen=True)
@@ -30,6 +39,33 @@ class ConsulRegistry:
                 f"{config.address}/v1/agent/service/deregister/{quote(self.instance_id)}"
             )
             response.raise_for_status()
+
+    async def ensure_registered(self) -> bool:
+        """Vuelve a registrar la instancia si Consul la dio de baja. Devuelve True si
+        tuvo que hacerlo."""
+        config = self._validate_config()
+        async with self._client(config.token) as client:
+            response = await client.get(
+                f"{config.address}/v1/agent/service/{quote(self.instance_id)}"
+            )
+        if response.status_code == 404:
+            await self.register()
+            return True
+        response.raise_for_status()
+        return False
+
+    async def keep_registered(self, intervalo_segundos: float) -> None:
+        """Revisa el registro cada `intervalo_segundos` hasta que se cancela. Si
+        Consul no responde, lo registra en el log y vuelve a intentar."""
+        while True:
+            await asyncio.sleep(intervalo_segundos)
+            try:
+                if await self.ensure_registered():
+                    logger.warning(
+                        "Consul había dado de baja la instancia; se registró"
+                    )
+            except (httpx.HTTPError, OSError) as error:
+                logger.warning("No se pudo revisar el registro en Consul: %s", error)
 
     def _client(self, token: str) -> httpx.AsyncClient:
         return httpx.AsyncClient(
