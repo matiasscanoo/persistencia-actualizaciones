@@ -68,3 +68,11 @@ def test_cada_linea_lleva_nivel_logger_y_correlation_id(
     assert "INFO prueba correlation_id=cid-de-prueba evento clave=valor" in (
         capsys.readouterr().out
     )
+
+
+def test_las_requests_de_httpx_no_ensucian_el_log(logging_restaurado) -> None:
+    # La revisión del registro en Consul hace un GET cada 30 s: en INFO, httpx
+    # escribiría una línea por cada una.
+    configurar_logs("INFO")
+
+    assert not logging.getLogger("httpx").isEnabledFor(logging.INFO)
