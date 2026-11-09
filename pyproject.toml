@@ -5,7 +5,7 @@ description = "Microservicio de escritura de documentos PDF (MongoDB + Redis)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "fastapi",
+    "fastapi>=0.141.1",
     "httpx>=0.28,<1.0",
     "motor>=3.7.1",
     "pydantic-settings>=2.15.0",
@@ -15,12 +15,12 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "black",
-    "httpx",
-    "pytest",
+    "black>=26.5.1",
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
-    "ruff",
+    "ruff>=0.16.9",
 ]
 
 [tool.pytest.ini_options]
