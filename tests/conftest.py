@@ -1,5 +1,7 @@
 """Fixtures compartidas de la suite (hermética: sin .env, MongoDB ni Redis)."""
 
+from pathlib import Path
+
 import pytest
 
 VARIABLES_DE_ENTORNO = (
@@ -8,14 +10,26 @@ VARIABLES_DE_ENTORNO = (
     "MONGO_COLLECTION",
     "REDIS_URL",
     "LOCK_TIMEOUT_SECONDS",
+    "LOG_LEVEL",
+    "CONSUL_ENABLED",
+    "CONSUL_HTTP_ADDR",
+    "CONSUL_HTTP_TOKEN_FILE",
+    "CONSUL_SERVICE_ADDRESS",
+    "CONSUL_SERVICE_PORT",
 )
 
 
 @pytest.fixture(autouse=True)
-def entorno_limpio(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ningún test hereda variables del entorno de la máquina."""
+def entorno_limpio(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Ningún test hereda variables de la máquina ni el `.env` del repo.
+
+    Settings lee `.env` del directorio actual: cada test corre en una carpeta
+    vacía, así un `.env` local (por ejemplo con CONSUL_ENABLED=true) no cambia
+    el resultado.
+    """
     for nombre in VARIABLES_DE_ENTORNO:
         monkeypatch.delenv(nombre, raising=False)
+    monkeypatch.chdir(tmp_path)
 
 
 @pytest.fixture
