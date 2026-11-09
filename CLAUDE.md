@@ -19,8 +19,10 @@ extracción de texto/checksum/páginas (extraccion-texto), orquestación, retry 
 SAGA (orquestador), Traefik y docker-compose del stack (infraestructura).
 Tampoco se persiste el binario del PDF.
 
-## Contrato compartido `microservicios-pdf` v1.0.0
+## Contrato compartido `microservicios-pdf` (vigente: 1.6.0)
 
+Fuente única: `CONTRATO.md` del repo `integracion`. Nació como v1.0.0 en la
+issue #1; las versiones siguientes son compatibles (detalle en `docs/contrato.md`).
 JSON UTF-8 · IDs UUID · fechas ISO-8601 UTC. **Congelado**: cualquier cambio
 sube versión y se documenta como compatible o BREAKING CHANGE.
 
@@ -29,7 +31,7 @@ sube versión y se documenta como compatible o BREAKING CHANGE.
 | POST | `/pdf` | 201 + documento | 400, 409, 503, 500 |
 | PATCH | `/pdf/{id}` | 200 + documento | 400, 404, 503, 500 |
 | DELETE | `/pdf/{id}` | 204 sin cuerpo | 400, 404, 503, 500 |
-| GET | `/health` | 200 | — |
+| GET | `/health` | 200 (MongoDB y Redis) | 503 si MongoDB no responde |
 
 Documento: `id`, `nombre`, `checksum`, `texto`, `tamano_bytes`, `paginas`,
 `created_at`, `updated_at`.
@@ -43,7 +45,10 @@ Errores: `{"error": {"code", "message", "details", "correlation_id"}}` con
 Todos los servicios exponen `GET /health` y propagan `X-Correlation-ID`.
 
 Variables: `MONGO_URI`, `MONGO_DATABASE`, `MONGO_COLLECTION`, `REDIS_URL`,
-`REDIS_TTL_SECONDS`, `LOCK_TIMEOUT_SECONDS`.
+`REDIS_TTL_SECONDS`, `LOCK_TIMEOUT_SECONDS`, `LOG_LEVEL` (1.2.0) y las de Consul
+(1.5.0/1.6.0): `CONSUL_ENABLED`, `CONSUL_HTTP_ADDR`, `CONSUL_HTTP_TOKEN_FILE`,
+`CONSUL_SERVICE_ADDRESS`, `CONSUL_SERVICE_PORT`. Con Consul, la configuración sale
+del KV (`config/persistencia-actualizaciones/`).
 
 ## Arquitectura obligatoria (idéntica en los 5 repos)
 
@@ -117,9 +122,9 @@ error del contrato; duplicado 400 → 409; prefijo `/api/v1/pdfs` → `/pdf`.
 
 **TDD, una slice vertical por ciclo**, un commit por fase:
 
-1. `test(actualizaciones): crear test de <comportamiento>` ← falla (commit rojo)
-2. `feat(actualizaciones): implementar <comportamiento>` ← lo mínimo para pasar
-3. `refactor(actualizaciones): <mejora>` ← solo si hace falta
+1. `test(persistencia-actualizaciones): crear test de <comportamiento>` ← falla (commit rojo)
+2. `feat(persistencia-actualizaciones): implementar <comportamiento>` ← lo mínimo para pasar
+3. `refactor(persistencia-actualizaciones): <mejora>` ← solo si hace falta
 
 El commit rojo es la evidencia de test-first y **no toca código de producción**.
 No escribir los diez tests y después las diez implementaciones.
@@ -186,3 +191,9 @@ Windows, repo en `C:\dev\persistencia-actualizaciones` (fuera de OneDrive a
 propósito). Python 3.11 y uv en Windows; Docker Desktop para los contenedores
 (la integración con WSL está sin activar). MongoDB y Redis se levantan con
 Docker cuando haga falta.
+
+Para probar con el sistema completo, los otros repos están clonados al lado de
+este en `C:\dev` (`dockers` = repo infraestructura, `integracion`, `Orquestador`,
+`persistencia-consultas`, `validacion-pdf`, `Extraccion-de-texto-pdf-`); cómo se
+levanta está en `docs/integracion.md`. **Solo se modifica este repo**: las fallas
+de los otros servicios se reportan a su equipo.

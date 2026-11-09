@@ -305,11 +305,11 @@ en vez de `localhost`.
   invalidación este servicio no escribe caché, así que no tiene un TTL
   propio que aplicar; la variable existe en el contrato compartido pero
   queda sin uso acá. El TTL real lo aplica persistencia-consultas.
-- **Access log con `correlation_id`** (resuelto en la auditoría de
-  integración): la imagen corre uvicorn con `--no-access-log` y el middleware
-  registra cada request (método, ruta, status y duración) dentro de su contexto,
-  así que toda línea lleva el `correlation_id` (contrato 6.5). Los logs van a
-  `stdout` (12-Factor XI). Desde el contrato 1.2.0 el formato es
-  `correlation_id=<id>` (antes `[<id>]`), igual en los cinco servicios.
-- El resto de las ambigüedades y su estado (acordada / abierta a
-  comunicar): [`docs/contrato.md`](docs/contrato.md#10-ambigüedades).
+- **Un commit de código sin su test rojo previo**: `6744dce`
+  (`feat(consul): registrar servicio...`, 2026-10-28) agregó el registro en Consul con
+  sus tests en el mismo commit, sin el commit `test` en rojo que pide la metodología.
+  No se reescribe la historia; el comportamiento quedó cubierto por
+  `tests/unit/test_consul_registry.py` y los cambios siguientes de ese archivo sí
+  tienen su rojo (`fe42696`, `384c2df`).
+- El resto de las ambigüedades y su estado (todas acordadas desde el contrato 1.1.0):
+  [`docs/contrato.md`](docs/contrato.md#10-ambigüedades).

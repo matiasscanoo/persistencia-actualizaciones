@@ -1,13 +1,16 @@
 # Contrato de persistencia-actualizaciones
 
 Microservicio de **escritura** de documentos PDF del sistema `microservicios-pdf`.
-Implementa la parte de escritura del contrato compartido **v1.0.0**: crear,
+Implementa la parte de escritura del contrato compartido **1.6.0**: crear,
 modificar y eliminar documentos en MongoDB y dejar Redis coherente después de
 cada escritura.
 
-- **Fuente**: contrato compartido `microservicios-pdf` v1.0.0, tal como aparece
-  en la issue #1 (endpoints, ejemplos de request/response, formato de error,
-  códigos y variables de entorno).
+- **Fuente**: contrato compartido `microservicios-pdf`, cuya fuente única es
+  `CONTRATO.md` en el repo `integracion` (versión vigente: 1.6.0). Este documento
+  nació de la v1.0.0 publicada en la issue #1; las versiones posteriores son
+  compatibles y se marcan donde cambian algo de este servicio: 1.1.0 (cierre de las
+  ambigüedades de la sección 10), 1.2.0 (`/health` con dependencias, logs y
+  apagado), 1.5.0 (registro en Consul) y 1.6.0 (configuración desde Consul).
 - **Estado del contrato**: congelado. Todo cambio sube la versión y se documenta
   como compatible o *BREAKING CHANGE*.
 - **Convenciones generales**: JSON UTF-8, IDs UUID, fechas ISO-8601 en UTC.
@@ -347,7 +350,7 @@ persistencia-consultas**, que solo lee: este servicio es el único que escribe.
 | `POST /pdf` | 201 + documento | 201 + documento | sí |
 | `PATCH /pdf/{id}` | solo `nombre`; no define la respuesta | 200 + documento completo | registrado → A3 |
 | `DELETE /pdf/{id}` | 204 sin cuerpo | 204 sin cuerpo; repetido → 404 | sí; repetición → A6 |
-| `GET /health` | 200 | 200 `{"status": "ok"}` | sí; cuerpo → A16 |
+| `GET /health` | 200 | `200` o `503` con `status` y `dependencias` (sección 3.3) | sí; A16 reemplazada en la 1.2.0 |
 | Formato de error | `{error: {code, message, details, correlation_id}}` | idéntico | sí; `details` → A14 |
 | Códigos de error | los 6 del contrato | los mismos 6, sin códigos nuevos | sí; lock → A8 |
 | Validación | `400 VALIDATION_ERROR` | 400 (no el 422 de FastAPI) | sí → A4 |
@@ -365,9 +368,27 @@ persistencia-consultas**, que solo lee: este servicio es el único que escribe.
 | `REDIS_URL` | conexión a Redis (lock e invalidación) |
 | `REDIS_TTL_SECONDS` | no se consume (A7) |
 | `LOCK_TIMEOUT_SECONDS` | expiración del lock y tiempo máximo de espera para obtenerlo |
+| `LOG_LEVEL` | *(1.2.0)* nivel de log: `DEBUG`, `INFO` (por defecto), `WARNING` o `ERROR` |
 | `PORT` | puerto de escucha de uvicorn, por defecto `8000`; **no es parte del contrato** (A12) |
+| `CONSUL_ENABLED` | *(1.5.0)* `true` en el stack; `false` en local y en los tests |
+| `CONSUL_HTTP_ADDR` | *(1.5.0)* dirección del agente de Consul |
+| `CONSUL_HTTP_TOKEN_FILE` | *(1.5.0)* archivo con el token de microservicios (Docker secret) |
+| `CONSUL_SERVICE_ADDRESS` | *(1.5.0)* dirección con la que se registra; por defecto, la IP del contenedor |
+| `CONSUL_SERVICE_PORT` | *(1.5.0)* puerto con el que se registra, por defecto `8000` |
 
-Los valores por defecto y el `.env.example` se definen en la issue #4.
+Con `CONSUL_ENABLED=true` *(1.6.0)*, las variables de la tabla, salvo las tres de
+conexión a Consul, salen del KV bajo `config/persistencia-actualizaciones/` y tienen
+prioridad sobre el entorno. Sin claves o sin Consul, el servicio no arranca.
+
+Al arrancar *(1.5.0)* se registra en Consul con ID
+`persistencia-actualizaciones-<hostname>` y un health check a `GET /health` cada 10 s;
+al apagarse se desregistra. Además, cada 30 s revisa que siga registrado y, si
+Consul lo dio de baja (health check crítico más de 1 minuto, por ejemplo con MongoDB
+caído), se vuelve a registrar. Esto último no lo pide el contrato: se agregó por un
+hallazgo de la integración (ver [`integracion.md`](integracion.md)).
+
+Los valores de ejemplo están en `.env.example` y en el README (sección
+*Configuración*).
 
 ## 10. Ambigüedades
 
