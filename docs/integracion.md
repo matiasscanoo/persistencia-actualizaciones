@@ -1,14 +1,13 @@
 # Resultados de integración (issue #14)
 
-Validación del servicio con dependencias reales en contenedores. Ejecutada el
-2026-09-30 sobre la rama `test/integracion-servicio-real` con `mongo:7`,
-`redis:7-alpine` y la imagen del `Dockerfile` de este repo.
+Validación del servicio con dependencias reales en contenedores, en dos etapas:
 
-**Alcance.** Los repos de **orquestador**, **persistencia-consultas** e
-**infraestructura** (el `docker compose` del stack) no estaban disponibles.
-Todo lo que depende solo de este servicio, MongoDB y Redis quedó verificado.
-Lo que necesita a los otros servicios figura en
-[Pendiente](#pendiente-cuando-exista-el-stack).
+1. **2026-09-30, servicio solo** con `mongo:7`, `redis:7-alpine` y la imagen del
+   `Dockerfile` de este repo: todo lo que depende solo de este servicio, MongoDB y
+   Redis. Los otros repos todavía no existían.
+2. **2026-11-09, stack completo** (contrato 1.6.0): infraestructura (Consul, Traefik,
+   MongoDB y Redis) y los cinco microservicios, levantados con los composes de
+   `dockers` e `integracion`. Ver [Stack completo](#stack-completo-2026-11-09).
 
 ## Escenarios de la issue
 
@@ -24,7 +23,7 @@ Lo que necesita a los otros servicios figura en
 | Índice único de `checksum` y suite de contrato contra `MongoRepository` real | ✅ | `test_repositorio_contrato.py`, `test_mongo_repository.py` + manual E1 |
 | Esquema en Mongo legible por persistencia-consultas (sección 8 del contrato) | ✅ (tras corregir `tamano_bytes`) | `test_mongo_repository.py` + manual E2 |
 | `X-Correlation-ID` recibido → header de respuesta y logs de este servicio | ✅ | manual E2–E4 |
-| Orquestador → POST/DELETE; lectura desde persistencia-consultas; Redis MISS → HIT → MISS | ⏳ | falta el stack |
+| Orquestador → POST/DELETE; lectura desde persistencia-consultas; Redis MISS → HIT → MISS | ✅ | [Stack completo](#stack-completo-2026-11-09) |
 
 Distribución medida con 20 escrituras simultáneas por el ASGI real:
 
@@ -68,70 +67,63 @@ las dependencias se detienen con el servicio en marcha.
    lee `_id` (UUID en texto) y serializa las fechas con milisegundos y `Z` (A15),
    igual que este servicio.
 
-## Pendiente cuando exista el stack
+## Stack completo (2026-11-09)
 
-- Orquestador → `POST /pdf` y `DELETE /pdf/{id}` como compensación, y que la
-  respuesta del `POST` sea la que el orquestador devuelve al frontend.
-- persistencia-consultas lee lo escrito (`GET /pdf/{id}`,
-  `GET /pdf/checksum/{checksum}`), y la secuencia MISS → HIT → PATCH/DELETE
-  → MISS con datos nuevos.
-- `X-Correlation-ID` desde el orquestador hasta los logs de este servicio.
-- Correr todo con el `docker compose` del stack y su red compartida.
-- Comunicar a infraestructura el requisito del hallazgo 2.
+Los seis repos clonados al lado de este en `C:\dev` (`dockers` es el repo
+`infraestructura`), con las imágenes de `main` de cada uno. La infraestructura se levantó
+con `docker compose up -d --wait` en `dockers` y los microservicios con
+`./scripts/levantar.sh` en `integracion`, que termina con el humo: los cinco `/health` en
+`200` y el orquestador por Traefik (HTTPS) en `200`.
 
-## Por qué la #14 sigue abierta y cómo retomarla
+Los escenarios corrieron desde un contenedor descartable en la red `redutn`, por HTTP contra
+cada servicio y leyendo Redis y MongoDB solo para verificar.
 
-La #14 queda **abierta a propósito**: sus criterios de aceptación piden correr
-los escenarios con el `docker compose` del stack y con orquestador y
-persistencia-consultas reales, y al 2026-09-30 esos repos no estaban
-disponibles. Lo que depende solo de este servicio ya está verificado (tabla de
-arriba). No hay que rehacerlo; alcanza con correr la suite con
-`TEST_MONGO_URI`/`TEST_REDIS_URL` como chequeo de regresión.
+| Escenario | Resultado |
+|---|---|
+| Configuración desde el KV de Consul y registro | ✅ claves bajo `config/persistencia-actualizaciones/`; health check `passing` |
+| Alta por Traefik (HTTPS) → orquestador → validación → extracción → este servicio | ✅ `201` en 228 ms, 12 ms en este servicio |
+| La respuesta del orquestador es el documento de este servicio | ✅ mismo `id`; `checksum` = SHA-256 del PDF |
+| `X-Correlation-ID` de punta a punta | ✅ el mismo ID en los logs de los cinco servicios (el orquestador solo acepta UUID, ver hallazgo 6) |
+| Esquema en MongoDB | ✅ `_id` UUID, `tamano_bytes` int64, fechas `date` |
+| persistencia-consultas lee lo escrito | ✅ por id devuelve exactamente el documento del `POST`, campo por campo |
+| Redis MISS → HIT en consultas | ✅ 22,8 ms → 5,4 ms; quedan cacheadas `pdf:id`, `pdf:checksum` y `pdf:list` |
+| `PATCH` invalida y consultas ve el dato nuevo | ✅ se borran las tres claves; por id, checksum y listado devuelve el nombre nuevo |
+| Duplicado | ✅ `409 DUPLICATE_CHECKSUM` por el orquestador y directo; un solo documento |
+| 20 `POST` simultáneos con el mismo `checksum` | ✅ `201` ×1 y `409` ×19; un solo documento |
+| 20 `PATCH` simultáneos sobre el mismo `id` | ✅ `200` ×20; consultas muestra el último nombre; no quedan `lock:*` |
+| Compensación SAGA | ✅ `DELETE` → `204`, repetido → `404`; consultas responde `404` y la caché queda limpia |
+| Redis caído | ✅ `201` en 2,0 s (1 s de lock + 1 s de caché), dos warnings con el `correlation_id`; `/health` `200` con `"redis": "caido"` |
+| MongoDB caído | ✅ `503 DATABASE_ERROR` en 5,3 s; `/health` `503` |
+| MongoDB caído más de 1 minuto y de vuelta | ❌ → ✅ ver hallazgo 5, corregido en el PR #39 |
 
-Cuando estén los repos de **orquestador**, **persistencia-consultas** e
-**infraestructura**:
+### Hallazgos del stack completo
 
-1. Clonarlos junto a este (`C:\dev\<repo>`) y leer su README y su contrato. Si
-   las issues de este repo pasan a formar parte de otros, leer también la #1.
-2. **Revisar la compatibilidad antes de levantar nada.** Contra
-   [`contrato.md`](contrato.md), confirmar en el código de los otros servicios:
-   - **persistencia-consultas:**
-     - nombres exactos de las claves Redis: `pdf:id:{id}`,
-       `pdf:checksum:{checksum}`, `pdf:list:*` (sección 7.1)
-     - que lea `_id` como UUID string, las fechas como `date` y
-       `tamano_bytes` como int64 (sección 8)
-     - que use el mismo `MONGO_DATABASE`/`MONGO_COLLECTION`
-     - que no cree su propio índice sobre `checksum` con otro nombre
-   - **orquestador:**
-     - que use `POST /pdf` y `DELETE /pdf/{id}`
-     - que trate el `404` de un `DELETE` repetido como compensación ya
-       aplicada (A6)
-     - que reintente ante un `503` (`DATABASE_ERROR` y
-       `DEPENDENCY_UNAVAILABLE`/`lock_timeout`, A8)
-     - que propague `X-Correlation-ID`
-     - que no mande campos extra (A5)
-   - **infraestructura:**
-     - que exista el servicio de este repo en el compose, con las 5
-       variables de entorno
-     - `restart: unless-stopped` y `depends_on: mongo: condition:
-       service_healthy` (hallazgo 2)
-     - la red compartida y la regla de Traefik hacia `/pdf`
-3. Levantar el stack con su compose y ejecutar lo que figura en
-   [Pendiente](#pendiente-cuando-exista-el-stack):
-   - flujo orquestador → `POST`
-   - compensación → `DELETE`
-   - lectura desde persistencia-consultas y la secuencia MISS → HIT →
-     PATCH/DELETE → MISS
-   - `X-Correlation-ID` de punta a punta en los logs de los tres servicios
-   - repetir E3/E4 (Redis y Mongo caídos) dentro del stack
-4. Reportar las incompatibilidades como issue en el repo que corresponda. Si
-   hay que cambiar el contrato compartido, se sube de versión y se documenta
-   como compatible o *BREAKING CHANGE*.
-5. Agregar los resultados a este documento, pegarlos como comentario en la
-   #14 y cerrarla. En este repo el `Closes #N` no cierra issues al mergear:
-   hay que cerrarla a mano con `gh issue close 14`.
+5. **El servicio no volvía a Consul después de una baja** (corregido, PR #39). Se
+   registraba solo al arrancar, con `DeregisterCriticalServiceAfter: 1m`. Con MongoDB
+   detenido 80 s, Consul lo borró del catálogo; al volver MongoDB quedó sano pero
+   invisible, y el orquestador respondía `503` ("no tiene instancias saludables") en todas
+   las altas hasta reiniciar el contenedor (Docker lo ve `healthy` y no lo reinicia).
+   Ahora revisa cada 30 s que siga registrado y, si no está, se vuelve a registrar:
+
+   | Momento | Antes del arreglo | Después |
+   |---|---|---|
+   | MongoDB detenido +25 s | `critical` | `critical` |
+   | +85 s | dado de baja | dado de baja |
+   | MongoDB de vuelta +20 s | sigue dado de baja | **`passing`** |
+
+6. **El orquestador reemplaza los `X-Correlation-ID` que no son UUID.** Es una decisión
+   del orquestador; este servicio acepta cualquier ID de ASCII imprimible de hasta 128
+   caracteres (A17). Con un UUID, el ID recorre los cinco servicios.
+7. **persistencia-consultas tiene el mismo problema del hallazgo 5**: en la misma prueba
+   desapareció del catálogo de Consul y no volvió. No es de este repo; queda reportado a
+   su equipo.
+
+El requisito del hallazgo 2 ya está en el compose de `integracion`
+(`restart: unless-stopped` en este servicio).
 
 ## Cómo reproducir
+
+Servicio solo:
 
 ```bash
 docker run -d --name pa-mongo-test -p 27018:27017 mongo:7
@@ -140,4 +132,13 @@ docker run -d --name pa-redis-test -p 6380:6379 redis:7-alpine
 TEST_MONGO_URI=mongodb://localhost:27018 \
 TEST_REDIS_URL=redis://localhost:6380/0 \
 uv run pytest tests/ -v
+```
+
+Stack completo (desde `C:\dev`, con los seis repos clonados y el certificado de
+Traefik generado como dice `dockers/traefik/README.md`):
+
+```bash
+docker network create redutn          # una sola vez
+(cd dockers && docker compose up -d --wait)
+(cd integracion && ./scripts/levantar.sh)
 ```
